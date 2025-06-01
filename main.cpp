@@ -258,3 +258,181 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "Simulador de Sistemas Opera
     
     Centre();
 }
+
+SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
+    // Panel de control superior
+    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuración");
+    
+    // Algoritmos
+    wxStaticBoxSizer* algBox = new wxStaticBoxSizer(wxVERTICAL, this, "Algoritmos");
+    m_fifoCheck = new wxCheckBox(this, wxID_ANY, "First In First Out (FIFO)");
+    m_sjfCheck = new wxCheckBox(this, wxID_ANY, "Shortest Job First (SJF)");
+    m_srtCheck = new wxCheckBox(this, wxID_ANY, "Shortest Remaining Time (SRT)");
+    m_rrCheck = new wxCheckBox(this, wxID_ANY, "Round Robin (RR)");
+    m_priorityCheck = new wxCheckBox(this, wxID_ANY, "Priority");
+    
+    algBox->Add(m_fifoCheck, 0, wxALL, 2);
+    algBox->Add(m_sjfCheck, 0, wxALL, 2);
+    algBox->Add(m_srtCheck, 0, wxALL, 2);
+    algBox->Add(m_rrCheck, 0, wxALL, 2);
+    algBox->Add(m_priorityCheck, 0, wxALL, 2);
+    
+    // Quantum para Round Robin
+    wxStaticBoxSizer* quantumBox = new wxStaticBoxSizer(wxVERTICAL, this, "Quantum (RR)");
+    m_quantumSpin = new wxSpinCtrl(this, 1005, "3", wxDefaultPosition, wxDefaultSize, 
+                                   wxSP_ARROW_KEYS, 1, 100, 3);
+    quantumBox->Add(new wxStaticText(this, wxID_ANY, "Ciclos:"), 0, wxALL, 2);
+    quantumBox->Add(m_quantumSpin, 0, wxALL, 2);
+    
+    // Botones de control
+    wxStaticBoxSizer* btnBox = new wxStaticBoxSizer(wxVERTICAL, this, "Control");
+    m_loadProcessesBtn = new wxButton(this, 1001, "Cargar Procesos");
+    m_startBtn = new wxButton(this, 1002, "Iniciar Simulación");
+    m_stopBtn = new wxButton(this, 1003, "Detener");
+    m_resetBtn = new wxButton(this, 1004, "Reiniciar");
+    
+    m_startBtn->Enable(false);
+    m_stopBtn->Enable(false);
+    
+    btnBox->Add(m_loadProcessesBtn, 0, wxEXPAND | wxALL, 2);
+    btnBox->Add(m_startBtn, 0, wxEXPAND | wxALL, 2);
+    btnBox->Add(m_stopBtn, 0, wxEXPAND | wxALL, 2);
+    btnBox->Add(m_resetBtn, 0, wxEXPAND | wxALL, 2);
+    
+    controlBox->Add(algBox, 1, wxEXPAND | wxALL, 5);
+    controlBox->Add(quantumBox, 0, wxEXPAND | wxALL, 5);
+    controlBox->Add(btnBox, 0, wxEXPAND | wxALL, 5);
+    
+    // Panel de información
+    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Información");
+    
+    // Lista de procesos
+    wxStaticBoxSizer* processBox = new wxStaticBoxSizer(wxVERTICAL, this, "Procesos Cargados");
+    m_processListCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(300, 150), 
+                                       wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_processListCtrl->AppendColumn("PID", wxLIST_FORMAT_LEFT, 60);
+    m_processListCtrl->AppendColumn("BT", wxLIST_FORMAT_RIGHT, 60);
+    m_processListCtrl->AppendColumn("AT", wxLIST_FORMAT_RIGHT, 60);
+    m_processListCtrl->AppendColumn("Priority", wxLIST_FORMAT_RIGHT, 80);
+    processBox->Add(m_processListCtrl, 1, wxEXPAND | wxALL, 2);
+    
+    // Métricas
+    wxStaticBoxSizer* metricsBox = new wxStaticBoxSizer(wxVERTICAL, this, "Métricas de Eficiencia");
+    m_metricsGrid = new wxGrid(this, wxID_ANY, wxDefaultPosition, wxSize(300, 150));
+    m_metricsGrid->CreateGrid(3, 2);
+    m_metricsGrid->SetColLabelValue(0, "Métrica");
+    m_metricsGrid->SetColLabelValue(1, "Valor");
+    m_metricsGrid->SetRowLabelValue(0, "1");
+    m_metricsGrid->SetRowLabelValue(1, "2");
+    m_metricsGrid->SetRowLabelValue(2, "3");
+    m_metricsGrid->SetCellValue(0, 0, "Avg Waiting Time");
+    m_metricsGrid->SetCellValue(1, 0, "Avg Turnaround Time");
+    m_metricsGrid->SetCellValue(2, 0, "Throughput");
+    m_metricsGrid->EnableEditing(false);
+    metricsBox->Add(m_metricsGrid, 1, wxEXPAND | wxALL, 2);
+    
+    infoBox->Add(processBox, 1, wxEXPAND | wxALL, 5);
+    infoBox->Add(metricsBox, 1, wxEXPAND | wxALL, 5);
+    
+    // Gráfico Gantt
+    wxStaticBoxSizer* ganttBox = new wxStaticBoxSizer(wxVERTICAL, this, "Diagrama de Gantt");
+    m_ganttChart = new GanttChart(this);
+    ganttBox->Add(m_ganttChart, 1, wxEXPAND | wxALL, 2);
+    
+    // Layout principal
+    wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+    mainSizer->Add(controlBox, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(infoBox, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(ganttBox, 1, wxEXPAND | wxALL, 5);
+    
+    SetSizer(mainSizer);
+}
+
+SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
+    // Panel de control superior
+    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuración");
+    
+    // Modo de sincronización
+    wxStaticBoxSizer* syncBox = new wxStaticBoxSizer(wxVERTICAL, this, "Mecanismo");
+    wxArrayString syncChoices;
+    syncChoices.Add("Mutex Locks");
+    syncChoices.Add("Semáforos");
+    m_syncModeChoice = new wxChoice(this, 2007, wxDefaultPosition, wxDefaultSize, syncChoices);
+    m_syncModeChoice->SetSelection(0);
+    syncBox->Add(new wxStaticText(this, wxID_ANY, "Tipo:"), 0, wxALL, 2);
+    syncBox->Add(m_syncModeChoice, 0, wxEXPAND | wxALL, 2);
+    
+    // Botones de carga
+    wxStaticBoxSizer* loadBox = new wxStaticBoxSizer(wxVERTICAL, this, "Carga de Archivos");
+    m_loadProcessesBtn = new wxButton(this, 2001, "Cargar Procesos");
+    m_loadResourcesBtn = new wxButton(this, 2002, "Cargar Recursos");
+    m_loadActionsBtn = new wxButton(this, 2003, "Cargar Acciones");
+    loadBox->Add(m_loadProcessesBtn, 0, wxEXPAND | wxALL, 2);
+    loadBox->Add(m_loadResourcesBtn, 0, wxEXPAND | wxALL, 2);
+    loadBox->Add(m_loadActionsBtn, 0, wxEXPAND | wxALL, 2);
+    
+    // Botones de control
+    wxStaticBoxSizer* btnBox = new wxStaticBoxSizer(wxVERTICAL, this, "Control");
+    m_startBtn = new wxButton(this, 2004, "Iniciar Simulación");
+    m_stopBtn = new wxButton(this, 2005, "Detener");
+    m_resetBtn = new wxButton(this, 2006, "Reiniciar");
+    
+    m_startBtn->Enable(false);
+    m_stopBtn->Enable(false);
+    
+    btnBox->Add(m_startBtn, 0, wxEXPAND | wxALL, 2);
+    btnBox->Add(m_stopBtn, 0, wxEXPAND | wxALL, 2);
+    btnBox->Add(m_resetBtn, 0, wxEXPAND | wxALL, 2);
+    
+    controlBox->Add(syncBox, 1, wxEXPAND | wxALL, 5);
+    controlBox->Add(loadBox, 1, wxEXPAND | wxALL, 5);
+    controlBox->Add(btnBox, 0, wxEXPAND | wxALL, 5);
+    
+    // Panel de información
+    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Información Cargada");
+    
+    // Lista de procesos
+    wxStaticBoxSizer* processBox = new wxStaticBoxSizer(wxVERTICAL, this, "Procesos");
+    m_processListCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(200, 120), 
+                                       wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_processListCtrl->AppendColumn("PID", wxLIST_FORMAT_LEFT, 60);
+    m_processListCtrl->AppendColumn("BT", wxLIST_FORMAT_RIGHT, 50);
+    m_processListCtrl->AppendColumn("AT", wxLIST_FORMAT_RIGHT, 50);
+    m_processListCtrl->AppendColumn("Priority", wxLIST_FORMAT_RIGHT, 60);
+    processBox->Add(m_processListCtrl, 1, wxEXPAND | wxALL, 2);
+    
+    // Lista de recursos
+    wxStaticBoxSizer* resourceBox = new wxStaticBoxSizer(wxVERTICAL, this, "Recursos");
+    m_resourceListCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(200, 120), 
+                                        wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_resourceListCtrl->AppendColumn("Recurso", wxLIST_FORMAT_LEFT, 100);
+    m_resourceListCtrl->AppendColumn("Contador", wxLIST_FORMAT_RIGHT, 80);
+    resourceBox->Add(m_resourceListCtrl, 1, wxEXPAND | wxALL, 2);
+    
+    // Lista de acciones
+    wxStaticBoxSizer* actionBox = new wxStaticBoxSizer(wxVERTICAL, this, "Acciones");
+    m_actionListCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(250, 120), 
+                                      wxLC_REPORT | wxLC_SINGLE_SEL);
+    m_actionListCtrl->AppendColumn("PID", wxLIST_FORMAT_LEFT, 50);
+    m_actionListCtrl->AppendColumn("Acción", wxLIST_FORMAT_LEFT, 70);
+    m_actionListCtrl->AppendColumn("Recurso", wxLIST_FORMAT_LEFT, 70);
+    m_actionListCtrl->AppendColumn("Ciclo", wxLIST_FORMAT_RIGHT, 50);
+    actionBox->Add(m_actionListCtrl, 1, wxEXPAND | wxALL, 2);
+    
+    infoBox->Add(processBox, 1, wxEXPAND | wxALL, 5);
+    infoBox->Add(resourceBox, 1, wxEXPAND | wxALL, 5);
+    infoBox->Add(actionBox, 1, wxEXPAND | wxALL, 5);
+    
+    // Timeline
+    wxStaticBoxSizer* timelineBox = new wxStaticBoxSizer(wxVERTICAL, this, "Línea de Tiempo");
+    m_timelineChart = new TimelineChart(this);
+    timelineBox->Add(m_timelineChart, 1, wxEXPAND | wxALL, 2);
+    
+    // Layout principal
+    wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+    mainSizer->Add(controlBox, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(infoBox, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(timelineBox, 1, wxEXPAND | wxALL, 5);
+    
+    SetSizer(mainSizer);
+}
