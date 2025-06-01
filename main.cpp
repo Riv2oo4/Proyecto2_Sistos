@@ -677,3 +677,255 @@ void SynchronizationPanel::CheckEnableStart() {
     bool canStart = !m_processes.empty() && !m_resources.empty() && !m_actions.empty();
     m_startBtn->Enable(canStart);
 }
+
+// Implementaciones de los métodos de dibujo para GanttChart
+void GanttChart::OnPaint(wxPaintEvent& event) {
+    wxPaintDC dc(this);
+    DoPrepareDC(dc);
+    
+    // Limpiar fondo
+    dc.SetBackground(*wxWHITE_BRUSH);
+    dc.Clear();
+    
+    if (m_processes.empty()) {
+        dc.DrawText("No hay procesos cargados", 10, 10);
+        return;
+    }
+    
+    DrawTimeAxis(dc);
+    DrawProcessBlocks(dc);
+    
+    // Mostrar ciclo actual
+    dc.SetTextForeground(*wxBLACK);
+    dc.DrawText(wxString::Format("Ciclo actual: %d", m_currentCycle), 10, 10);
+}
+
+void GanttChart::DrawTimeAxis(wxPaintDC& dc) {
+    dc.SetPen(*wxBLACK_PEN);
+    
+    // Línea base del tiempo
+    int baseY = 60;
+    dc.DrawLine(50, baseY, 800, baseY);
+    
+    // Marcas de tiempo
+    for (int i = 0; i <= 20; ++i) {
+        int x = 50 + i * 30;
+        dc.DrawLine(x, baseY - 5, x, baseY + 5);
+        dc.DrawText(wxString::Format("%d", i), x - 5, baseY + 10);
+    }
+}
+
+void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
+    int blockHeight = 25;
+    int baseY = 60;
+    
+    // Simular ejecución de procesos (ejemplo simplificado)
+    for (size_t i = 0; i < m_processes.size() && i * 3 < m_currentCycle; ++i) {
+        const Process& process = m_processes[i];
+        
+        // Calcular posición y tamaño del bloque
+        int startX = 50 + (i * 3) * 30;  // Ejemplo simplificado
+        int width = process.burstTime * 15;  // Escala temporal
+        int y = baseY - blockHeight - 10;
+        
+        // Dibujar bloque del proceso
+        dc.SetBrush(wxBrush(process.color));
+        dc.SetPen(wxPen(process.color.ChangeLightness(80), 2));
+        
+        if (m_isRunning && i * 3 <= m_currentCycle) {
+            // Animación: mostrar progreso
+            int currentWidth = std::min(width, static_cast<int>((m_currentCycle - i * 3) * 15));
+            dc.DrawRectangle(startX, y, currentWidth, blockHeight);
+        } else if (!m_isRunning) {
+            dc.DrawRectangle(startX, y, width, blockHeight);
+        }
+        
+        // Etiqueta del proceso
+        dc.SetTextForeground(*wxWHITE);
+        dc.DrawText(process.pid, startX + 5, y + 5);
+    }
+}
+
+void GanttChart::OnTimer(wxTimerEvent& event) {
+    if (m_isRunning) {
+        m_currentCycle++;
+        
+        // Actualizar scroll automáticamente
+        int x, y;
+        GetViewStart(&x, &y);
+        if (m_currentCycle * 30 > GetSize().GetWidth() + x * 20) {
+            Scroll(x + 5, y);
+        }
+        
+        Refresh();
+        
+        // Detener cuando todos los procesos hayan terminado
+        if (m_currentCycle > 50) {  // Condición de ejemplo
+            StopSimulation();
+        }
+    }
+}
+
+void GanttChart::StartSimulation() {
+    m_isRunning = true;
+    m_timer->Start(500);  // 500ms por ciclo
+}
+
+void GanttChart::StopSimulation() {
+    m_isRunning = false;
+    m_timer->Stop();
+}
+
+void GanttChart::ResetChart() {
+    m_currentCycle = 0;
+    m_isRunning = false;
+    m_timer->Stop();
+    Scroll(0, 0);
+    Refresh();
+}
+
+void GanttChart::SetProcesses(const std::vector<Process>& processes) {
+    m_processes = processes;
+    Refresh();
+}
+
+// Implementaciones para TimelineChart
+void TimelineChart::OnPaint(wxPaintEvent& event) {
+    wxPaintDC dc(this);
+    DoPrepareDC(dc);
+    
+    // Limpiar fondo
+    dc.SetBackground(*wxWHITE_BRUSH);
+    dc.Clear();
+    
+    if (m_processes.empty() || m_resources.empty() || m_actions.empty()) {
+        dc.DrawText("Cargar procesos, recursos y acciones", 10, 10);
+        return;
+    }
+    
+    DrawTimeline(dc);
+    
+    // Mostrar ciclo actual
+    dc.SetTextForeground(*wxBLACK);
+    dc.DrawText(wxString::Format("Ciclo actual: %d", m_currentCycle), 10, 10);
+}
+
+void TimelineChart::DrawTimeline(wxPaintDC& dc) {
+    dc.SetPen(*wxBLACK_PEN);
+    
+    // Línea base del tiempo
+    int baseY = 60;
+    dc.DrawLine(50, baseY, 800, baseY);
+    
+    // Marcas de tiempo
+    for (int i = 0; i <= 20; ++i) {
+        int x = 50 + i * 30;
+        dc.DrawLine(x, baseY - 5, x, baseY + 5);
+        dc.DrawText(wxString::Format("%d", i), x - 5, baseY + 10);
+    }
+    
+    // Dibujar acciones de procesos
+    int rowHeight = 30;
+    for (size_t i = 0; i < m_processes.size(); ++i) {
+        const Process& process = m_processes[i];
+        int y = baseY + 20 + i * rowHeight;
+        
+        // Etiqueta del proceso
+        dc.DrawText(process.pid, 10, y);
+        
+        // Buscar acciones de este proceso
+        for (const Action& action : m_actions) {
+            if (action.pid == process.pid && action.cycle <= m_currentCycle) {
+                int x = 50 + action.cycle * 30;
+                
+                // Color según el tipo de acción y estado
+                wxColour actionColor = (action.action == "READ") ? wxColour(100, 200, 100) : wxColour(200, 100, 100);
+                
+                // Verificar si el recurso está disponible (simulación simplificada)
+                bool resourceAvailable = true;  // Aquí iría la lógica real de disponibilidad
+                
+                if (!resourceAvailable) {
+                    actionColor = wxColour(200, 200, 100);  // Amarillo para WAITING
+                }
+                
+                dc.SetBrush(wxBrush(actionColor));
+                dc.DrawRectangle(x - 10, y, 20, 20);
+                
+                // Etiqueta de la acción
+                dc.SetTextForeground(*wxBLACK);
+                dc.DrawText(action.action.Left(1), x - 5, y + 2);
+            }
+        }
+    }
+    
+    // Leyenda
+    int legendY = baseY + 20 + m_processes.size() * rowHeight + 20;
+    dc.DrawText("Leyenda:", 10, legendY);
+    
+    dc.SetBrush(wxBrush(wxColour(100, 200, 100)));
+    dc.DrawRectangle(80, legendY, 15, 15);
+    dc.DrawText("READ", 100, legendY);
+    
+    dc.SetBrush(wxBrush(wxColour(200, 100, 100)));
+    dc.DrawRectangle(150, legendY, 15, 15);
+    dc.DrawText("WRITE", 170, legendY);
+    
+    dc.SetBrush(wxBrush(wxColour(200, 200, 100)));
+    dc.DrawRectangle(220, legendY, 15, 15);
+    dc.DrawText("WAITING", 240, legendY);
+}
+
+void TimelineChart::OnTimer(wxTimerEvent& event) {
+    if (m_isRunning) {
+        m_currentCycle++;
+        
+        // Actualizar scroll automáticamente
+        int x, y;
+        GetViewStart(&x, &y);
+        if (m_currentCycle * 30 > GetSize().GetWidth() + x * 20) {
+            Scroll(x + 5, y);
+        }
+        
+        Refresh();
+        
+        // Detener cuando se hayan procesado todas las acciones
+        int maxCycle = 0;
+        for (const Action& action : m_actions) {
+            maxCycle = std::max(maxCycle, action.cycle);
+        }
+        
+        if (m_currentCycle > maxCycle + 5) {
+            StopSimulation();
+        }
+    }
+}
+
+void TimelineChart::StartSimulation() {
+    m_isRunning = true;
+    m_timer->Start(800);  // 800ms por ciclo para sincronización
+}
+
+void TimelineChart::StopSimulation() {
+    m_isRunning = false;
+    m_timer->Stop();
+}
+
+void TimelineChart::ResetChart() {
+    m_currentCycle = 0;
+    m_isRunning = false;
+    m_timer->Stop();
+    Scroll(0, 0);
+    Refresh();
+}
+
+void TimelineChart::SetData(const std::vector<Process>& processes, 
+                           const std::vector<Resource>& resources,
+                           const std::vector<Action>& actions) {
+    m_processes = processes;
+    m_resources = resources;
+    m_actions = actions;
+    Refresh();
+}
+
+// Punto de entrada de la aplicación
+wxIMPLEMENT_APP(OSSimulatorApp);
