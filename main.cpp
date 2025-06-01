@@ -436,3 +436,244 @@ SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
     
     SetSizer(mainSizer);
 }
+
+GanttChart::GanttChart(wxWindow* parent) : wxScrolledWindow(parent), 
+                                           m_currentCycle(0), m_isRunning(false) {
+    m_timer = new wxTimer(this);
+    SetScrollbars(20, 20, 100, 50);
+    SetBackgroundColour(*wxWHITE);
+}
+
+TimelineChart::TimelineChart(wxWindow* parent) : wxScrolledWindow(parent), 
+                                                 m_currentCycle(0), m_isRunning(false) {
+    m_timer = new wxTimer(this);
+    SetScrollbars(20, 20, 100, 50);
+    SetBackgroundColour(*wxWHITE);
+}
+
+void MainFrame::OnExit(wxCommandEvent& event) { Close(true); }
+void MainFrame::OnAbout(wxCommandEvent& event) { 
+    wxMessageBox("Simulador de Sistemas Operativos\nUniversidad del Valle de Guatemala", 
+                 "Acerca de", wxOK | wxICON_INFORMATION);
+}
+void MainFrame::OnNotebookPageChanged(wxBookCtrlEvent& event) {
+    SetStatusText(wxString::Format("Pestaña: %d", event.GetSelection()), 1);
+}
+
+void SchedulingPanel::OnLoadProcesses(wxCommandEvent& event) {
+    wxFileDialog dialog(this, "Seleccionar archivo de procesos", "", "",
+                       "Archivos de texto (*.txt)|*.txt", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() == wxID_OK) {
+        LoadProcessesFromFile(dialog.GetPath());
+    }
+}
+
+void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
+    m_ganttChart->StartSimulation();
+    m_startBtn->Enable(false);
+    m_stopBtn->Enable(true);
+}
+
+void SchedulingPanel::OnStopSimulation(wxCommandEvent& event) {
+    m_ganttChart->StopSimulation();
+    m_startBtn->Enable(true);
+    m_stopBtn->Enable(false);
+}
+
+void SchedulingPanel::OnResetSimulation(wxCommandEvent& event) {
+    m_ganttChart->ResetChart();
+    m_startBtn->Enable(!m_processes.empty());
+    m_stopBtn->Enable(false);
+}
+
+void SchedulingPanel::OnAlgorithmCheck(wxCommandEvent& event) {
+    // Actualizar estado de simulación basado en algoritmos seleccionados
+    bool anySelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || 
+                      m_srtCheck->GetValue() || m_rrCheck->GetValue() || 
+                      m_priorityCheck->GetValue();
+    m_startBtn->Enable(anySelected && !m_processes.empty());
+}
+
+void SchedulingPanel::OnQuantumChange(wxSpinEvent& event) {
+    // Actualizar quantum para Round Robin
+}
+
+void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
+    // Implementar carga de procesos desde archivo
+    // Formato: <PID>, <BT>, <AT>, <Priority>
+    m_processListCtrl->DeleteAllItems();
+    m_processes.clear();
+    
+    // Aquí iría la lógica de parsing del archivo
+    // Por ahora, datos de ejemplo:
+    Process p1 = {"P1", 8, 0, 1, *wxRED};
+    Process p2 = {"P2", 4, 1, 2, *wxBLUE};
+    Process p3 = {"P3", 6, 2, 1, *wxGREEN};
+    
+    m_processes.push_back(p1);
+    m_processes.push_back(p2);
+    m_processes.push_back(p3);
+    
+    // Actualizar lista visual
+    for (size_t i = 0; i < m_processes.size(); ++i) {
+        long index = m_processListCtrl->InsertItem(i, m_processes[i].pid);
+        m_processListCtrl->SetItem(index, 1, wxString::Format("%d", m_processes[i].burstTime));
+        m_processListCtrl->SetItem(index, 2, wxString::Format("%d", m_processes[i].arrivalTime));
+        m_processListCtrl->SetItem(index, 3, wxString::Format("%d", m_processes[i].priority));
+    }
+    
+    m_ganttChart->SetProcesses(m_processes);
+    UpdateMetrics();
+    
+    bool anyAlgSelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || 
+                         m_srtCheck->GetValue() || m_rrCheck->GetValue() || 
+                         m_priorityCheck->GetValue();
+    m_startBtn->Enable(anyAlgSelected);
+}
+
+void SchedulingPanel::UpdateMetrics() {
+    // Calcular y mostrar métricas
+    m_metricsGrid->SetCellValue(0, 1, "5.2");
+    m_metricsGrid->SetCellValue(1, 1, "8.7");
+    m_metricsGrid->SetCellValue(2, 1, "0.8");
+}
+
+// Implementaciones similares para SynchronizationPanel
+void SynchronizationPanel::OnLoadProcesses(wxCommandEvent& event) {
+    wxFileDialog dialog(this, "Seleccionar archivo de procesos", "", "",
+                       "Archivos de texto (*.txt)|*.txt", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() == wxID_OK) {
+        LoadProcessesFromFile(dialog.GetPath());
+    }
+}
+
+void SynchronizationPanel::OnLoadResources(wxCommandEvent& event) {
+    wxFileDialog dialog(this, "Seleccionar archivo de recursos", "", "",
+                       "Archivos de texto (*.txt)|*.txt", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() == wxID_OK) {
+        LoadResourcesFromFile(dialog.GetPath());
+    }
+}
+
+void SynchronizationPanel::OnLoadActions(wxCommandEvent& event) {
+    wxFileDialog dialog(this, "Seleccionar archivo de acciones", "", "",
+                       "Archivos de texto (*.txt)|*.txt", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() == wxID_OK) {
+        LoadActionsFromFile(dialog.GetPath());
+    }
+}
+
+void SynchronizationPanel::OnStartSimulation(wxCommandEvent& event) {
+    m_timelineChart->StartSimulation();
+    m_startBtn->Enable(false);
+    m_stopBtn->Enable(true);
+}
+
+void SynchronizationPanel::OnStopSimulation(wxCommandEvent& event) {
+    m_timelineChart->StopSimulation();
+    m_startBtn->Enable(true);
+    m_stopBtn->Enable(false);
+}
+
+void SynchronizationPanel::OnResetSimulation(wxCommandEvent& event) {
+    m_timelineChart->ResetChart();
+    m_startBtn->Enable(!m_processes.empty() && !m_resources.empty() && !m_actions.empty());
+    m_stopBtn->Enable(false);
+}
+
+void SynchronizationPanel::OnSyncModeChange(wxCommandEvent& event) {
+    // Actualizar configuración según el modo de sincronización seleccionado
+    wxString mode = m_syncModeChoice->GetStringSelection();
+    // Corregir acceso al StatusBar
+    MainFrame* mainFrame = dynamic_cast<MainFrame*>(GetParent()->GetParent());
+    if (mainFrame) {
+        mainFrame->SetStatusText("Modo: " + mode, 1);
+    }
+}
+
+void SynchronizationPanel::LoadProcessesFromFile(const wxString& filename) {
+    // Implementar carga de procesos desde archivo
+    // Formato: <PID>, <BT>, <AT>, <Priority>
+    m_processListCtrl->DeleteAllItems();
+    m_processes.clear();
+    
+    // Aquí iría la lógica de parsing del archivo
+    // Por ahora, datos de ejemplo:
+    Process p1 = {"P1", 8, 0, 1, *wxRED};
+    Process p2 = {"P2", 4, 1, 2, *wxBLUE};
+    Process p3 = {"P3", 6, 2, 1, *wxGREEN};
+    
+    m_processes.push_back(p1);
+    m_processes.push_back(p2);
+    m_processes.push_back(p3);
+    
+    // Actualizar lista visual
+    for (size_t i = 0; i < m_processes.size(); ++i) {
+        long index = m_processListCtrl->InsertItem(i, m_processes[i].pid);
+        m_processListCtrl->SetItem(index, 1, wxString::Format("%d", m_processes[i].burstTime));
+        m_processListCtrl->SetItem(index, 2, wxString::Format("%d", m_processes[i].arrivalTime));
+        m_processListCtrl->SetItem(index, 3, wxString::Format("%d", m_processes[i].priority));
+    }
+    
+    CheckEnableStart();
+}
+
+void SynchronizationPanel::LoadResourcesFromFile(const wxString& filename) {
+    // Implementar carga de recursos desde archivo
+    // Formato: <NOMBRE RECURSO>, <CONTADOR>
+    m_resourceListCtrl->DeleteAllItems();
+    m_resources.clear();
+    
+    // Datos de ejemplo:
+    Resource r1 = {"R1", 1};
+    Resource r2 = {"R2", 2};
+    Resource r3 = {"R3", 1};
+    
+    m_resources.push_back(r1);
+    m_resources.push_back(r2);
+    m_resources.push_back(r3);
+    
+    // Actualizar lista visual
+    for (size_t i = 0; i < m_resources.size(); ++i) {
+        long index = m_resourceListCtrl->InsertItem(i, m_resources[i].name);
+        m_resourceListCtrl->SetItem(index, 1, wxString::Format("%d", m_resources[i].counter));
+    }
+    
+    CheckEnableStart();
+}
+
+void SynchronizationPanel::LoadActionsFromFile(const wxString& filename) {
+    // Implementar carga de acciones desde archivo
+    // Formato: <PID>, <ACCION>, <RECURSO>, <CICLO>
+    m_actionListCtrl->DeleteAllItems();
+    m_actions.clear();
+    
+    // Datos de ejemplo:
+    Action a1 = {"P1", "READ", "R1", 0};
+    Action a2 = {"P2", "WRITE", "R1", 1};
+    Action a3 = {"P1", "READ", "R2", 3};
+    Action a4 = {"P3", "WRITE", "R2", 2};
+    
+    m_actions.push_back(a1);
+    m_actions.push_back(a2);
+    m_actions.push_back(a3);
+    m_actions.push_back(a4);
+    
+    // Actualizar lista visual
+    for (size_t i = 0; i < m_actions.size(); ++i) {
+        long index = m_actionListCtrl->InsertItem(i, m_actions[i].pid);
+        m_actionListCtrl->SetItem(index, 1, m_actions[i].action);
+        m_actionListCtrl->SetItem(index, 2, m_actions[i].resource);
+        m_actionListCtrl->SetItem(index, 3, wxString::Format("%d", m_actions[i].cycle));
+    }
+    
+    CheckEnableStart();
+    
+    // Actualizar datos en el timeline
+    m_timelineChart->SetData(m_processes, m_resources, m_actions);
+}
+
+void SynchronizationPanel::CheckEnableStart() {
+    bool canStart = !m_processes.empty() && !m_resources.empty() && !m_actions.empty();
+    m_startBtn->Enable(canStart);
+}
