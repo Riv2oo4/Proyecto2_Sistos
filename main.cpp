@@ -42,7 +42,7 @@ public:
     bool OnInit() override;
 };
 
-// Panel para visualización diagrama de  Gantt
+// Panel para visualizacion diagrama de  Gantt
 class GanttChart : public wxScrolledWindow {
 public:
     GanttChart(wxWindow* parent);
@@ -65,7 +65,7 @@ private:
     wxDECLARE_EVENT_TABLE();
 };
 
-// Panel para timeline de sincronización
+// Panel para timeline de sincronizacion
 class TimelineChart : public wxScrolledWindow {
 public:
     TimelineChart(wxWindow* parent);
@@ -91,7 +91,7 @@ private:
     wxDECLARE_EVENT_TABLE();
 };
 
-// Panel de calendarización
+// Panel de calendarizacion
 class SchedulingPanel : public wxPanel {
 public:
     SchedulingPanel(wxWindow* parent);
@@ -125,7 +125,7 @@ private:
     wxDECLARE_EVENT_TABLE();
 };
 
-// Panel de sincronización
+// Panel de sincronizacion
 class SynchronizationPanel : public wxPanel {
 public:
     SynchronizationPanel(wxWindow* parent);
@@ -166,6 +166,7 @@ private:
 class MainFrame : public wxFrame {
 public:
     MainFrame();
+    wxNotebook* GetNotebook() { return m_notebook; }
     
 private:
     void OnExit(wxCommandEvent& event);
@@ -241,27 +242,67 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "Simulador de Sistemas Opera
     CreateStatusBar(2);
     SetStatusText("Listo para simular", 0);
     
-    // Notebook principal
-    m_notebook = new wxNotebook(this, wxID_ANY);
+    // CORRECCION: Crear notebook principal con estilo explicito
+    m_notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, 
+                               wxNB_TOP | wxNB_FIXEDWIDTH);
     
     // Crear paneles
     m_schedulingPanel = new SchedulingPanel(m_notebook);
     m_syncPanel = new SynchronizationPanel(m_notebook);
     
-    m_notebook->AddPage(m_schedulingPanel, "A. Calendarización", true);
-    m_notebook->AddPage(m_syncPanel, "B. Sincronización", false);
+    // CORRECCION: Agregar paginas con titulos mas claros y asegurar que se muestren
+    m_notebook->AddPage(m_schedulingPanel, "A. Calendarizacion de Procesos", true);
+    m_notebook->AddPage(m_syncPanel, "B. Sincronizacion de Recursos", false);
+    
+    // CORRECCION: Forzar que el notebook sea visible y tenga el tamaño correcto
+    m_notebook->SetMinSize(wxSize(1180, 750));
     
     // Layout principal
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
     mainSizer->Add(m_notebook, 1, wxEXPAND | wxALL, 5);
     SetSizer(mainSizer);
     
+    // CORRECCION: Asegurar que el layout se actualice
+    Layout();
     Centre();
 }
 
+void MainFrame::OnNotebookPageChanged(wxBookCtrlEvent& event) {
+    int selection = event.GetSelection();
+    wxString tabName;
+    
+    switch(selection) {
+        case 0:
+            tabName = "Calendarizacion de Procesos";
+            SetStatusText("Modo: Simulacion de Algoritmos de Scheduling", 1);
+            break;
+        case 1:
+            tabName = "Sincronizacion de Recursos";  
+            SetStatusText("Modo: Simulacion de Mecanismos de Sincronizacion", 1);
+            break;
+        default:
+            tabName = "Desconocido";
+            break;
+    }
+    
+    SetStatusText("Pestana activa: " + tabName, 0);
+}
+
+// Para SchedulingPanel - agregar titulo distintivo
 SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
+    // TITULO DEL PANEL
+    wxStaticText* titleText = new wxStaticText(this, wxID_ANY, 
+        "A. SIMULADOR DE ALGORITMOS DE CALENDARIZACION", 
+        wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER);
+    
+    wxFont titleFont = titleText->GetFont();
+    titleFont.SetPointSize(12);
+    titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+    titleText->SetFont(titleFont);
+    titleText->SetForegroundColour(wxColour(0, 100, 200));
+    
     // Panel de control superior
-    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuración");
+    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuracion de Scheduling");
     
     // Algoritmos
     wxStaticBoxSizer* algBox = new wxStaticBoxSizer(wxVERTICAL, this, "Algoritmos");
@@ -287,7 +328,7 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
     // Botones de control
     wxStaticBoxSizer* btnBox = new wxStaticBoxSizer(wxVERTICAL, this, "Control");
     m_loadProcessesBtn = new wxButton(this, 1001, "Cargar Procesos");
-    m_startBtn = new wxButton(this, 1002, "Iniciar Simulación");
+    m_startBtn = new wxButton(this, 1002, "Iniciar Simulacion");
     m_stopBtn = new wxButton(this, 1003, "Detener");
     m_resetBtn = new wxButton(this, 1004, "Reiniciar");
     
@@ -303,8 +344,8 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
     controlBox->Add(quantumBox, 0, wxEXPAND | wxALL, 5);
     controlBox->Add(btnBox, 0, wxEXPAND | wxALL, 5);
     
-    // Panel de información
-    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Información");
+    // Panel de informacion
+    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Informacion");
     
     // Lista de procesos
     wxStaticBoxSizer* processBox = new wxStaticBoxSizer(wxVERTICAL, this, "Procesos Cargados");
@@ -316,11 +357,11 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
     m_processListCtrl->AppendColumn("Priority", wxLIST_FORMAT_RIGHT, 80);
     processBox->Add(m_processListCtrl, 1, wxEXPAND | wxALL, 2);
     
-    // Métricas
-    wxStaticBoxSizer* metricsBox = new wxStaticBoxSizer(wxVERTICAL, this, "Métricas de Eficiencia");
+    // Metricas
+    wxStaticBoxSizer* metricsBox = new wxStaticBoxSizer(wxVERTICAL, this, "Metricas de Eficiencia");
     m_metricsGrid = new wxGrid(this, wxID_ANY, wxDefaultPosition, wxSize(300, 150));
     m_metricsGrid->CreateGrid(3, 2);
-    m_metricsGrid->SetColLabelValue(0, "Métrica");
+    m_metricsGrid->SetColLabelValue(0, "Metrica");
     m_metricsGrid->SetColLabelValue(1, "Valor");
     m_metricsGrid->SetRowLabelValue(0, "1");
     m_metricsGrid->SetRowLabelValue(1, "2");
@@ -334,13 +375,14 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
     infoBox->Add(processBox, 1, wxEXPAND | wxALL, 5);
     infoBox->Add(metricsBox, 1, wxEXPAND | wxALL, 5);
     
-    // Gráfico Gantt
+    // Grafico Gantt
     wxStaticBoxSizer* ganttBox = new wxStaticBoxSizer(wxVERTICAL, this, "Diagrama de Gantt");
     m_ganttChart = new GanttChart(this);
     ganttBox->Add(m_ganttChart, 1, wxEXPAND | wxALL, 2);
     
-    // Layout principal
+    // CORRECCION: Agregar titulo al layout principal
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+    mainSizer->Add(titleText, 0, wxEXPAND | wxALL, 10);
     mainSizer->Add(controlBox, 0, wxEXPAND | wxALL, 5);
     mainSizer->Add(infoBox, 0, wxEXPAND | wxALL, 5);
     mainSizer->Add(ganttBox, 1, wxEXPAND | wxALL, 5);
@@ -349,14 +391,25 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
 }
 
 SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
-    // Panel de control superior
-    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuración");
+    // TITULO DEL PANEL
+    wxStaticText* titleText = new wxStaticText(this, wxID_ANY, 
+        "B. SIMULADOR DE MECANISMOS DE SINCRONIZACION", 
+        wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER);
     
-    // Modo de sincronización
+    wxFont titleFont = titleText->GetFont();
+    titleFont.SetPointSize(12);
+    titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+    titleText->SetFont(titleFont);
+    titleText->SetForegroundColour(wxColour(200, 100, 0));
+    
+    // Panel de control superior
+    wxStaticBoxSizer* controlBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Configuracion de Sincronizacion");
+    
+    // Modo de sincronizacion
     wxStaticBoxSizer* syncBox = new wxStaticBoxSizer(wxVERTICAL, this, "Mecanismo");
     wxArrayString syncChoices;
     syncChoices.Add("Mutex Locks");
-    syncChoices.Add("Semáforos");
+    syncChoices.Add("Semaforos");
     m_syncModeChoice = new wxChoice(this, 2007, wxDefaultPosition, wxDefaultSize, syncChoices);
     m_syncModeChoice->SetSelection(0);
     syncBox->Add(new wxStaticText(this, wxID_ANY, "Tipo:"), 0, wxALL, 2);
@@ -373,7 +426,7 @@ SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
     
     // Botones de control
     wxStaticBoxSizer* btnBox = new wxStaticBoxSizer(wxVERTICAL, this, "Control");
-    m_startBtn = new wxButton(this, 2004, "Iniciar Simulación");
+    m_startBtn = new wxButton(this, 2004, "Iniciar Simulacion");
     m_stopBtn = new wxButton(this, 2005, "Detener");
     m_resetBtn = new wxButton(this, 2006, "Reiniciar");
     
@@ -388,8 +441,8 @@ SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
     controlBox->Add(loadBox, 1, wxEXPAND | wxALL, 5);
     controlBox->Add(btnBox, 0, wxEXPAND | wxALL, 5);
     
-    // Panel de información
-    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Información Cargada");
+    // Panel de informacion
+    wxStaticBoxSizer* infoBox = new wxStaticBoxSizer(wxHORIZONTAL, this, "Informacion Cargada");
     
     // Lista de procesos
     wxStaticBoxSizer* processBox = new wxStaticBoxSizer(wxVERTICAL, this, "Procesos");
@@ -414,7 +467,7 @@ SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
     m_actionListCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(250, 120), 
                                       wxLC_REPORT | wxLC_SINGLE_SEL);
     m_actionListCtrl->AppendColumn("PID", wxLIST_FORMAT_LEFT, 50);
-    m_actionListCtrl->AppendColumn("Acción", wxLIST_FORMAT_LEFT, 70);
+    m_actionListCtrl->AppendColumn("Accion", wxLIST_FORMAT_LEFT, 70);
     m_actionListCtrl->AppendColumn("Recurso", wxLIST_FORMAT_LEFT, 70);
     m_actionListCtrl->AppendColumn("Ciclo", wxLIST_FORMAT_RIGHT, 50);
     actionBox->Add(m_actionListCtrl, 1, wxEXPAND | wxALL, 2);
@@ -424,12 +477,13 @@ SynchronizationPanel::SynchronizationPanel(wxWindow* parent) : wxPanel(parent) {
     infoBox->Add(actionBox, 1, wxEXPAND | wxALL, 5);
     
     // Timeline
-    wxStaticBoxSizer* timelineBox = new wxStaticBoxSizer(wxVERTICAL, this, "Línea de Tiempo");
+    wxStaticBoxSizer* timelineBox = new wxStaticBoxSizer(wxVERTICAL, this, "Linea de Tiempo");
     m_timelineChart = new TimelineChart(this);
     timelineBox->Add(m_timelineChart, 1, wxEXPAND | wxALL, 2);
     
-    // Layout principal
+    // CORRECCION: Agregar titulo al layout principal
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+    mainSizer->Add(titleText, 0, wxEXPAND | wxALL, 10);
     mainSizer->Add(controlBox, 0, wxEXPAND | wxALL, 5);
     mainSizer->Add(infoBox, 0, wxEXPAND | wxALL, 5);
     mainSizer->Add(timelineBox, 1, wxEXPAND | wxALL, 5);
@@ -456,9 +510,7 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
     wxMessageBox("Simulador de Sistemas Operativos\nUniversidad del Valle de Guatemala", 
                  "Acerca de", wxOK | wxICON_INFORMATION);
 }
-void MainFrame::OnNotebookPageChanged(wxBookCtrlEvent& event) {
-    SetStatusText(wxString::Format("Pestaña: %d", event.GetSelection()), 1);
-}
+
 
 void SchedulingPanel::OnLoadProcesses(wxCommandEvent& event) {
     wxFileDialog dialog(this, "Seleccionar archivo de procesos", "", "",
@@ -487,7 +539,7 @@ void SchedulingPanel::OnResetSimulation(wxCommandEvent& event) {
 }
 
 void SchedulingPanel::OnAlgorithmCheck(wxCommandEvent& event) {
-    // Actualizar estado de simulación basado en algoritmos seleccionados
+    // Actualizar estado de simulacion basado en algoritmos seleccionados
     bool anySelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || 
                       m_srtCheck->GetValue() || m_rrCheck->GetValue() || 
                       m_priorityCheck->GetValue();
@@ -504,7 +556,7 @@ void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
     m_processListCtrl->DeleteAllItems();
     m_processes.clear();
     
-    // Aquí iría la lógica de parsing del archivo
+    // Aqui iria la logica de parsing del archivo
     // Por ahora, datos de ejemplo:
     Process p1 = {"P1", 8, 0, 1, *wxRED};
     Process p2 = {"P2", 4, 1, 2, *wxBLUE};
@@ -532,7 +584,7 @@ void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
 }
 
 void SchedulingPanel::UpdateMetrics() {
-    // Calcular y mostrar métricas
+    // Calcular y mostrar metricas
     m_metricsGrid->SetCellValue(0, 1, "5.2");
     m_metricsGrid->SetCellValue(1, 1, "8.7");
     m_metricsGrid->SetCellValue(2, 1, "0.8");
@@ -582,7 +634,7 @@ void SynchronizationPanel::OnResetSimulation(wxCommandEvent& event) {
 }
 
 void SynchronizationPanel::OnSyncModeChange(wxCommandEvent& event) {
-    // Actualizar configuración según el modo de sincronización seleccionado
+    // Actualizar configuracion segun el modo de sincronizacion seleccionado
     wxString mode = m_syncModeChoice->GetStringSelection();
     // Corregir acceso al StatusBar
     MainFrame* mainFrame = dynamic_cast<MainFrame*>(GetParent()->GetParent());
@@ -597,7 +649,7 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString& filename) {
     m_processListCtrl->DeleteAllItems();
     m_processes.clear();
     
-    // Aquí iría la lógica de parsing del archivo
+    // Aqui iria la logica de parsing del archivo
     // Por ahora, datos de ejemplo:
     Process p1 = {"P1", 8, 0, 1, *wxRED};
     Process p2 = {"P2", 4, 1, 2, *wxBLUE};
@@ -678,7 +730,7 @@ void SynchronizationPanel::CheckEnableStart() {
     m_startBtn->Enable(canStart);
 }
 
-// Implementaciones de los métodos de dibujo para GanttChart
+// Implementaciones de los metodos de dibujo para GanttChart
 void GanttChart::OnPaint(wxPaintEvent& event) {
     wxPaintDC dc(this);
     DoPrepareDC(dc);
@@ -703,7 +755,7 @@ void GanttChart::OnPaint(wxPaintEvent& event) {
 void GanttChart::DrawTimeAxis(wxPaintDC& dc) {
     dc.SetPen(*wxBLACK_PEN);
     
-    // Línea base del tiempo
+    // Linea base del tiempo
     int baseY = 60;
     dc.DrawLine(50, baseY, 800, baseY);
     
@@ -719,11 +771,11 @@ void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
     int blockHeight = 25;
     int baseY = 60;
     
-    // Simular ejecución de procesos (ejemplo simplificado)
+    // Simular ejecucion de procesos (ejemplo simplificado)
     for (size_t i = 0; i < m_processes.size() && i * 3 < m_currentCycle; ++i) {
         const Process& process = m_processes[i];
         
-        // Calcular posición y tamaño del bloque
+        // Calcular posicion y tamaño del bloque
         int startX = 50 + (i * 3) * 30;  // Ejemplo simplificado
         int width = process.burstTime * 15;  // Escala temporal
         int y = baseY - blockHeight - 10;
@@ -733,7 +785,7 @@ void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
         dc.SetPen(wxPen(process.color.ChangeLightness(80), 2));
         
         if (m_isRunning && i * 3 <= m_currentCycle) {
-            // Animación: mostrar progreso
+            // Animacion: mostrar progreso
             int currentWidth = std::min(width, static_cast<int>((m_currentCycle - i * 3) * 15));
             dc.DrawRectangle(startX, y, currentWidth, blockHeight);
         } else if (!m_isRunning) {
@@ -750,7 +802,7 @@ void GanttChart::OnTimer(wxTimerEvent& event) {
     if (m_isRunning) {
         m_currentCycle++;
         
-        // Actualizar scroll automáticamente
+        // Actualizar scroll automaticamente
         int x, y;
         GetViewStart(&x, &y);
         if (m_currentCycle * 30 > GetSize().GetWidth() + x * 20) {
@@ -760,7 +812,7 @@ void GanttChart::OnTimer(wxTimerEvent& event) {
         Refresh();
         
         // Detener cuando todos los procesos hayan terminado
-        if (m_currentCycle > 50) {  // Condición de ejemplo
+        if (m_currentCycle > 50) {  // Condicion de ejemplo
             StopSimulation();
         }
     }
@@ -813,7 +865,7 @@ void TimelineChart::OnPaint(wxPaintEvent& event) {
 void TimelineChart::DrawTimeline(wxPaintDC& dc) {
     dc.SetPen(*wxBLACK_PEN);
     
-    // Línea base del tiempo
+    // Linea base del tiempo
     int baseY = 60;
     dc.DrawLine(50, baseY, 800, baseY);
     
@@ -838,11 +890,11 @@ void TimelineChart::DrawTimeline(wxPaintDC& dc) {
             if (action.pid == process.pid && action.cycle <= m_currentCycle) {
                 int x = 50 + action.cycle * 30;
                 
-                // Color según el tipo de acción y estado
+                // Color segun el tipo de accion y estado
                 wxColour actionColor = (action.action == "READ") ? wxColour(100, 200, 100) : wxColour(200, 100, 100);
                 
-                // Verificar si el recurso está disponible (simulación simplificada)
-                bool resourceAvailable = true;  // Aquí iría la lógica real de disponibilidad
+                // Verificar si el recurso esta disponible (simulacion simplificada)
+                bool resourceAvailable = true;  // Aqui iria la logica real de disponibilidad
                 
                 if (!resourceAvailable) {
                     actionColor = wxColour(200, 200, 100);  // Amarillo para WAITING
@@ -851,7 +903,7 @@ void TimelineChart::DrawTimeline(wxPaintDC& dc) {
                 dc.SetBrush(wxBrush(actionColor));
                 dc.DrawRectangle(x - 10, y, 20, 20);
                 
-                // Etiqueta de la acción
+                // Etiqueta de la accion
                 dc.SetTextForeground(*wxBLACK);
                 dc.DrawText(action.action.Left(1), x - 5, y + 2);
             }
@@ -879,7 +931,7 @@ void TimelineChart::OnTimer(wxTimerEvent& event) {
     if (m_isRunning) {
         m_currentCycle++;
         
-        // Actualizar scroll automáticamente
+        // Actualizar scroll automaticamente
         int x, y;
         GetViewStart(&x, &y);
         if (m_currentCycle * 30 > GetSize().GetWidth() + x * 20) {
@@ -902,7 +954,7 @@ void TimelineChart::OnTimer(wxTimerEvent& event) {
 
 void TimelineChart::StartSimulation() {
     m_isRunning = true;
-    m_timer->Start(800);  // 800ms por ciclo para sincronización
+    m_timer->Start(800);  // 800ms por ciclo para sincronizacion
 }
 
 void TimelineChart::StopSimulation() {
@@ -927,5 +979,5 @@ void TimelineChart::SetData(const std::vector<Process>& processes,
     Refresh();
 }
 
-// Punto de entrada de la aplicación
+// Punto de entrada de la aplicacion
 wxIMPLEMENT_APP(OSSimulatorApp);
