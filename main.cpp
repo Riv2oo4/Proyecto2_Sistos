@@ -981,3 +981,27 @@ void TimelineChart::SetData(const std::vector<Process>& processes,
 
 // Punto de entrada de la aplicacion
 wxIMPLEMENT_APP(OSSimulatorApp);
+
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <map>
+#include <iostream>
+
+std::vector<Proceso> leerProcesos(const std::string& ruta) {
+    std::vector<Proceso> procesos;
+    std::ifstream archivo(ruta);
+    std::string linea;
+
+    while (getline(archivo, linea)) {
+        std::stringstream ss(linea);
+        std::string pid;
+        int bt, at, prio;
+        char coma;
+
+        ss >> pid >> coma >> bt >> coma >> at >> coma >> prio;
+        procesos.push_back({pid, bt, at, prio});
+    }
+
+    return procesos;
+}
