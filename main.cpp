@@ -1023,3 +1023,30 @@ std::map<std::string, int> leerRecursos(const std::string& ruta) {
 
     return recursos;
 }
+
+std::vector<Accion> leerAcciones(const std::string& ruta) {
+    std::vector<Accion> acciones;
+    std::ifstream archivo(ruta);
+    std::string linea;
+
+    while (getline(archivo, linea)) {
+        std::stringstream ss(linea);
+        std::string pid, accion, recurso;
+        int ciclo;
+        char coma;
+
+        getline(ss, pid, ',');
+        getline(ss, accion, ',');
+        getline(ss, recurso, ',');
+        ss >> ciclo;
+
+        // Eliminar espacios en blanco
+        pid.erase(0, pid.find_first_not_of(" \t\r\n"));
+        accion.erase(0, accion.find_first_not_of(" \t\r\n"));
+        recurso.erase(0, recurso.find_first_not_of(" \t\r\n"));
+
+        acciones.push_back({pid, accion, recurso, ciclo});
+    }
+
+    return acciones;
+}
