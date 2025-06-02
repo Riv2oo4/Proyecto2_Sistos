@@ -1005,3 +1005,21 @@ std::vector<Proceso> leerProcesos(const std::string& ruta) {
 
     return procesos;
 }
+
+std::map<std::string, int> leerRecursos(const std::string& ruta) {
+    std::map<std::string, int> recursos;
+    std::ifstream archivo(ruta);
+    std::string linea;
+
+    while (getline(archivo, linea)) {
+        std::stringstream ss(linea);
+        std::string nombre;
+        int contador;
+        char coma;
+
+        ss >> nombre >> coma >> contador;
+        recursos[nombre] = contador;
+    }
+
+    return recursos;
+}
