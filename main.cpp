@@ -14,6 +14,7 @@
 #include <sstream>
 #include <map>
 #include <algorithm>
+#include <queue>
 
 
 class MainFrame;
@@ -120,6 +121,7 @@ private:
     void ScheduleFIFO();
     void ScheduleSJF();
     void ScheduleSRT();
+    void ScheduleRR();
 
     
     wxCheckBox* m_fifoCheck;
@@ -552,6 +554,10 @@ void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
     else if (m_srtCheck->GetValue()) {
         ScheduleSRT();
     }
+    else if (m_rrCheck->GetValue()) {
+        ScheduleRR();
+    }
+    
     m_ganttChart->StartSimulation();
     m_startBtn->Enable(false);
     m_stopBtn->Enable(true);
@@ -924,6 +930,113 @@ void SchedulingPanel::ScheduleSRT() {
     m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", double(n) / ultimoFin));
 
     // Pasar al Gantt
+    m_ganttChart->SetProcesses(m_processes);
+    m_ganttChart->ResetChart();
+}
+void SchedulingPanel::ScheduleRR() {
+    if (m_processes.empty()) return;
+
+    int quantum = m_quantumSpin->GetValue();
+    std::vector<Process> procesos = m_processes;
+    int n = procesos.size();
+
+    for (auto& p : procesos) {
+        p.startTime = -1;
+        p.finishTime = -1;
+        p.waitingTime = 0;
+        p.segments.clear();
+    }
+
+    std::queue<Process*> readyQueue;
+    int currentCycle = 0;
+    int completed = 0;
+
+    std::vector<int> remainingBT(n);
+    for (int i = 0; i < n; ++i) {
+        remainingBT[i] = procesos[i].burstTime;
+    }
+
+    std::vector<bool> inQueue(n, false);
+
+    while (completed < n) {
+        // Agregar procesos que llegan este ciclo
+        for (int i = 0; i < n; ++i) {
+            if (procesos[i].arrivalTime == currentCycle && !inQueue[i]) {
+                readyQueue.push(&procesos[i]);
+                inQueue[i] = true;
+            }
+        }
+
+        if (readyQueue.empty()) {
+            currentCycle++;
+            continue;
+        }
+
+        Process* p = readyQueue.front();
+        readyQueue.pop();
+
+        int index = std::distance(procesos.begin(), std::find_if(procesos.begin(), procesos.end(),
+                                                                 [&](const Process& proc) { return proc.pid == p->pid; }));
+        int execTime = std::min(quantum, remainingBT[index]);
+
+        // Añadir segmento RR
+        p->segments.push_back({currentCycle, execTime});
+
+        remainingBT[index] -= execTime;
+        currentCycle += execTime;
+
+        // Añadir procesos que llegaron mientras este ejecutaba
+        for (int i = 0; i < n; ++i) {
+            if (procesos[i].arrivalTime > currentCycle - execTime &&
+                procesos[i].arrivalTime <= currentCycle && !inQueue[i]) {
+                readyQueue.push(&procesos[i]);
+                inQueue[i] = true;
+            }
+        }
+
+        if (remainingBT[index] > 0) {
+            readyQueue.push(p);  // volver a encolar
+        } else {
+            p->finishTime = currentCycle;
+            completed++;
+        }
+    }
+
+    for (auto& p : procesos) {
+        p.startTime = p.segments.front().first;
+        int execution = 0;
+        for (const auto& seg : p.segments) {
+            execution += seg.second;
+        }
+        p.waitingTime = p.finishTime - p.arrivalTime - execution;
+    }
+
+    // Copiar a procesos reales
+    for (auto& p_new : procesos) {
+        for (auto& p_old : m_processes) {
+            if (p_new.pid == p_old.pid) {
+                p_old.startTime = p_new.startTime;
+                p_old.finishTime = p_new.finishTime;
+                p_old.waitingTime = p_new.waitingTime;
+                p_old.segments = p_new.segments;
+            }
+        }
+    }
+
+    // Métricas
+    double totalWT = 0, totalTAT = 0;
+    int ultimoFin = 0;
+    for (const auto& p : m_processes) {
+        totalWT += p.waitingTime;
+        totalTAT += (p.finishTime - p.arrivalTime);
+        ultimoFin = std::max(ultimoFin, p.finishTime);
+    }
+
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", totalWT / n));
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", totalTAT / n));
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", double(n) / ultimoFin));
+
+    // Visualización
     m_ganttChart->SetProcesses(m_processes);
     m_ganttChart->ResetChart();
 }
