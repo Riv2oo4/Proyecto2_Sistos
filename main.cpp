@@ -10,6 +10,10 @@
 #include <wx/checkbox.h>
 #include <vector>
 #include <string>
+#include <fstream>
+#include <sstream>
+#include <map>
+
 
 class MainFrame;
 class GanttChart;
@@ -551,36 +555,81 @@ void SchedulingPanel::OnQuantumChange(wxSpinEvent& event) {
 }
 
 void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
-    // Implementar carga de procesos desde archivo
-    // Formato: <PID>, <BT>, <AT>, <Priority>
     m_processListCtrl->DeleteAllItems();
     m_processes.clear();
-    
-    // Aqui iria la logica de parsing del archivo
-    // Por ahora, datos de ejemplo:
-    Process p1 = {"P1", 8, 0, 1, *wxRED};
-    Process p2 = {"P2", 4, 1, 2, *wxBLUE};
-    Process p3 = {"P3", 6, 2, 1, *wxGREEN};
-    
-    m_processes.push_back(p1);
-    m_processes.push_back(p2);
-    m_processes.push_back(p3);
-    
-    // Actualizar lista visual
+
+    std::ifstream file(filename.ToStdString());
+    if (!file.is_open()) {
+        wxMessageBox("No se pudo abrir el archivo de procesos.", "Error", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    std::string line;
+    // Paleta de colores para cada proceso
+    std::vector<wxColour> colors = {
+        wxColour(255, 0, 0),    // Rojo
+        wxColour(0, 0, 255),    // Azul
+        wxColour(0, 255, 0),    // Verde
+        wxColour(0, 255, 255),  // Cian
+        wxColour(255, 255, 0),  // Amarillo
+        wxColour(255, 0, 255)   // Magenta
+    };
+    int colorIndex = 0;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) continue; // saltar líneas en blanco
+
+        std::stringstream ss(line);
+        std::string pid_str, bt_str, at_str, prio_str;
+
+        // Leer cada campo con getline y coma como separador
+        std::getline(ss, pid_str, ',');
+        std::getline(ss, bt_str, ',');
+        std::getline(ss, at_str, ',');
+        std::getline(ss, prio_str, ',');
+
+        // Eliminar espacios al inicio y al final de cada string
+        auto trim = [&](std::string& s) {
+            // trim left
+            s.erase(0, s.find_first_not_of(" \t\r\n"));
+            // trim right
+            s.erase(s.find_last_not_of(" \t\r\n") + 1);
+        };
+        trim(pid_str);
+        trim(bt_str);
+        trim(at_str);
+        trim(prio_str);
+
+        // Convertir a enteros
+        int bt = std::stoi(bt_str);
+        int at = std::stoi(at_str);
+        int prio = std::stoi(prio_str);
+
+        // Elegir color cíclicamente
+        wxColour color = colors[colorIndex++ % colors.size()];
+        Process p = { wxString(pid_str), bt, at, prio, color };
+        m_processes.push_back(p);
+    }
+
+    // Actualizar el wxListCtrl de la vista
     for (size_t i = 0; i < m_processes.size(); ++i) {
         long index = m_processListCtrl->InsertItem(i, m_processes[i].pid);
         m_processListCtrl->SetItem(index, 1, wxString::Format("%d", m_processes[i].burstTime));
         m_processListCtrl->SetItem(index, 2, wxString::Format("%d", m_processes[i].arrivalTime));
         m_processListCtrl->SetItem(index, 3, wxString::Format("%d", m_processes[i].priority));
     }
-    
+
+    // Activar botón “Iniciar” si ya hay procesos y al menos un algoritmo está seleccionado
+    bool anyAlgSelected = m_fifoCheck->GetValue() ||
+                          m_sjfCheck->GetValue() ||
+                          m_srtCheck->GetValue() ||
+                          m_rrCheck->GetValue() ||
+                          m_priorityCheck->GetValue();
+    m_startBtn->Enable(anyAlgSelected && !m_processes.empty());
+
+    // Pasarle los procesos al Gantt (para la vista gráfica)
     m_ganttChart->SetProcesses(m_processes);
     UpdateMetrics();
-    
-    bool anyAlgSelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || 
-                         m_srtCheck->GetValue() || m_rrCheck->GetValue() || 
-                         m_priorityCheck->GetValue();
-    m_startBtn->Enable(anyAlgSelected);
 }
 
 void SchedulingPanel::UpdateMetrics() {
@@ -644,53 +693,117 @@ void SynchronizationPanel::OnSyncModeChange(wxCommandEvent& event) {
 }
 
 void SynchronizationPanel::LoadProcessesFromFile(const wxString& filename) {
-    // Implementar carga de procesos desde archivo
-    // Formato: <PID>, <BT>, <AT>, <Priority>
+    // Limpiar la lista anterior y el vector m_processes
     m_processListCtrl->DeleteAllItems();
     m_processes.clear();
-    
-    // Aqui iria la logica de parsing del archivo
-    // Por ahora, datos de ejemplo:
-    Process p1 = {"P1", 8, 0, 1, *wxRED};
-    Process p2 = {"P2", 4, 1, 2, *wxBLUE};
-    Process p3 = {"P3", 6, 2, 1, *wxGREEN};
-    
-    m_processes.push_back(p1);
-    m_processes.push_back(p2);
-    m_processes.push_back(p3);
-    
-    // Actualizar lista visual
-    for (size_t i = 0; i < m_processes.size(); ++i) {
-        long index = m_processListCtrl->InsertItem(i, m_processes[i].pid);
-        m_processListCtrl->SetItem(index, 1, wxString::Format("%d", m_processes[i].burstTime));
-        m_processListCtrl->SetItem(index, 2, wxString::Format("%d", m_processes[i].arrivalTime));
-        m_processListCtrl->SetItem(index, 3, wxString::Format("%d", m_processes[i].priority));
+
+    std::ifstream file(filename.ToStdString());
+    if (!file.is_open()) {
+        wxMessageBox("No se pudo abrir el archivo de procesos.", "Error", wxOK | wxICON_ERROR);
+        return;
     }
-    
+
+    std::string line;
+    // Paleta de colores para cada proceso
+    std::vector<wxColour> colors = {
+        wxColour(255, 0, 0),    // Rojo
+        wxColour(0, 0, 255),    // Azul
+        wxColour(0, 255, 0),    // Verde
+        wxColour(0, 255, 255),  // Cian
+        wxColour(255, 255, 0),  // Amarillo
+        wxColour(255, 0, 255)   // Magenta
+    };
+    int colorIndex = 0;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+
+        std::stringstream ss(line);
+        std::string pid_str, bt_str, at_str, prio_str;
+
+        // Leemos cada campo hasta la coma
+        std::getline(ss, pid_str, ',');
+        std::getline(ss, bt_str, ',');
+        std::getline(ss, at_str, ',');
+        std::getline(ss, prio_str, ',');
+
+        // Función corta para eliminar espacios al inicio y fin
+        auto trim = [&](std::string& s) {
+            s.erase(0, s.find_first_not_of(" \t\r\n"));
+            s.erase(s.find_last_not_of(" \t\r\n") + 1);
+        };
+        trim(pid_str);
+        trim(bt_str);
+        trim(at_str);
+        trim(prio_str);
+
+        int bt = std::stoi(bt_str);
+        int at = std::stoi(at_str);
+        int prio = std::stoi(prio_str);
+
+        wxColour color = colors[colorIndex++ % colors.size()];
+        Process p = { wxString(pid_str), bt, at, prio, color };
+        m_processes.push_back(p);
+    }
+
+    // Ahora actualizamos el ListCtrl en el panel de sincronización
+    for (size_t i = 0; i < m_processes.size(); ++i) {
+        long idx = m_processListCtrl->InsertItem(i, m_processes[i].pid);
+        m_processListCtrl->SetItem(idx, 1, wxString::Format("%d", m_processes[i].burstTime));
+        m_processListCtrl->SetItem(idx, 2, wxString::Format("%d", m_processes[i].arrivalTime));
+        m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", m_processes[i].priority));
+    }
+
+    // Comprueba si ya se pueden habilitar los botones de “Iniciar Simulación”
     CheckEnableStart();
 }
 
+
 void SynchronizationPanel::LoadResourcesFromFile(const wxString& filename) {
-    // Implementar carga de recursos desde archivo
-    // Formato: <NOMBRE RECURSO>, <CONTADOR>
+    // Limpiar la lista y el vector de recursos anteriores
     m_resourceListCtrl->DeleteAllItems();
     m_resources.clear();
-    
-    // Datos de ejemplo:
-    Resource r1 = {"R1", 1};
-    Resource r2 = {"R2", 2};
-    Resource r3 = {"R3", 1};
-    
-    m_resources.push_back(r1);
-    m_resources.push_back(r2);
-    m_resources.push_back(r3);
-    
-    // Actualizar lista visual
-    for (size_t i = 0; i < m_resources.size(); ++i) {
-        long index = m_resourceListCtrl->InsertItem(i, m_resources[i].name);
-        m_resourceListCtrl->SetItem(index, 1, wxString::Format("%d", m_resources[i].counter));
+
+    std::ifstream file(filename.ToStdString());
+    if (!file.is_open()) {
+        wxMessageBox("No se pudo abrir el archivo de recursos.", "Error", wxOK | wxICON_ERROR);
+        return;
     }
-    
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;  // saltar líneas en blanco
+
+        std::stringstream ss(line);
+        std::string name_str, counter_str;
+
+        // Leer cada campo hasta la coma
+        std::getline(ss, name_str, ',');
+        std::getline(ss, counter_str, ',');
+
+        // Eliminar espacios al inicio y al final de cada string
+        auto trim = [&](std::string& s) {
+            s.erase(0, s.find_first_not_of(" \t\r\n"));            // trim left
+            s.erase(s.find_last_not_of(" \t\r\n") + 1);  // trim right
+        };
+        trim(name_str);
+        trim(counter_str);
+
+        // Convertir counter a entero seguro
+        int counter = std::stoi(counter_str);
+
+        Resource r = { wxString(name_str), counter };
+        m_resources.push_back(r);
+    }
+
+    // Llenar el wxListCtrl con los recursos cargados
+    for (size_t i = 0; i < m_resources.size(); ++i) {
+        long idx = m_resourceListCtrl->InsertItem(i, m_resources[i].name);
+        m_resourceListCtrl->SetItem(idx, 1,
+            wxString::Format("%d", m_resources[i].counter));
+    }
+
+    // Verificar si ya se pueden habilitar los botones de “Iniciar Simulación”
     CheckEnableStart();
 }
 
@@ -700,16 +813,31 @@ void SynchronizationPanel::LoadActionsFromFile(const wxString& filename) {
     m_actionListCtrl->DeleteAllItems();
     m_actions.clear();
     
-    // Datos de ejemplo:
-    Action a1 = {"P1", "READ", "R1", 0};
-    Action a2 = {"P2", "WRITE", "R1", 1};
-    Action a3 = {"P1", "READ", "R2", 3};
-    Action a4 = {"P3", "WRITE", "R2", 2};
-    
-    m_actions.push_back(a1);
-    m_actions.push_back(a2);
-    m_actions.push_back(a3);
-    m_actions.push_back(a4);
+    std::ifstream file(filename.ToStdString());
+    std::string line;
+
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string pid, accion, recurso;
+        int ciclo;
+        char coma;
+
+        std::getline(ss, pid, ',');
+        std::getline(ss, accion, ',');
+        std::getline(ss, recurso, ',');
+        ss >> ciclo;
+
+        // Limpiar espacios
+        pid.erase(0, pid.find_first_not_of(" \t\r\n"));
+        pid.erase(pid.find_last_not_of(" \t\r\n") + 1);
+        accion.erase(0, accion.find_first_not_of(" \t\r\n"));
+        accion.erase(accion.find_last_not_of(" \t\r\n") + 1);
+        recurso.erase(0, recurso.find_first_not_of(" \t\r\n"));
+        recurso.erase(recurso.find_last_not_of(" \t\r\n") + 1);
+
+        Action a = {wxString(pid), wxString(accion), wxString(recurso), ciclo};
+        m_actions.push_back(a);
+    }
     
     // Actualizar lista visual
     for (size_t i = 0; i < m_actions.size(); ++i) {
@@ -981,72 +1109,3 @@ void TimelineChart::SetData(const std::vector<Process>& processes,
 
 // Punto de entrada de la aplicacion
 wxIMPLEMENT_APP(OSSimulatorApp);
-
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <map>
-#include <iostream>
-
-std::vector<Proceso> leerProcesos(const std::string& ruta) {
-    std::vector<Proceso> procesos;
-    std::ifstream archivo(ruta);
-    std::string linea;
-
-    while (getline(archivo, linea)) {
-        std::stringstream ss(linea);
-        std::string pid;
-        int bt, at, prio;
-        char coma;
-
-        ss >> pid >> coma >> bt >> coma >> at >> coma >> prio;
-        procesos.push_back({pid, bt, at, prio});
-    }
-
-    return procesos;
-}
-
-std::map<std::string, int> leerRecursos(const std::string& ruta) {
-    std::map<std::string, int> recursos;
-    std::ifstream archivo(ruta);
-    std::string linea;
-
-    while (getline(archivo, linea)) {
-        std::stringstream ss(linea);
-        std::string nombre;
-        int contador;
-        char coma;
-
-        ss >> nombre >> coma >> contador;
-        recursos[nombre] = contador;
-    }
-
-    return recursos;
-}
-
-std::vector<Accion> leerAcciones(const std::string& ruta) {
-    std::vector<Accion> acciones;
-    std::ifstream archivo(ruta);
-    std::string linea;
-
-    while (getline(archivo, linea)) {
-        std::stringstream ss(linea);
-        std::string pid, accion, recurso;
-        int ciclo;
-        char coma;
-
-        getline(ss, pid, ',');
-        getline(ss, accion, ',');
-        getline(ss, recurso, ',');
-        ss >> ciclo;
-
-        // Eliminar espacios en blanco
-        pid.erase(0, pid.find_first_not_of(" \t\r\n"));
-        accion.erase(0, accion.find_first_not_of(" \t\r\n"));
-        recurso.erase(0, recurso.find_first_not_of(" \t\r\n"));
-
-        acciones.push_back({pid, accion, recurso, ciclo});
-    }
-
-    return acciones;
-}
