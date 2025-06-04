@@ -899,7 +899,8 @@ void SchedulingPanel::ScheduleSRT()
         int remainingTime;
     };
 
-    // 1) Inicializar: restablecer campos y segmentos en m_processes
+    int n = m_processes.size();
+    // 1) Inicializar cada proceso
     for (auto &p : m_processes)
     {
         p.startTime = -1;
@@ -908,38 +909,50 @@ void SchedulingPanel::ScheduleSRT()
         p.segments.clear();
     }
 
-    // 2) Preparar vector de ExecState sobre punteros a m_processes
-    std::vector<ExecState> readyQueue;
-    int n = m_processes.size();
+    // 2) Ordenar punteros a procesos por arrivalTime para insertar en readyQueue
+    std::vector<Process *> arrivals;
+    arrivals.reserve(n);
+    for (auto &p : m_processes)
+    {
+        arrivals.push_back(&p);
+    }
+    std::sort(arrivals.begin(), arrivals.end(),
+              [](Process *a, Process *b)
+              {
+                  return a->arrivalTime < b->arrivalTime;
+              });
+
+    int idx = 0; // índice en ‘arrivals’
     int completed = 0;
     int currentCycle = 0;
+    std::vector<ExecState> readyQueue;
+    readyQueue.reserve(n);
 
-    // 3) Bucle hasta completar todos
+    // 3) Ciclo principal
     while (completed < n)
     {
-        // 3a) Insertar en readyQueue todos los procesos que llegan en este ciclo
-        for (auto &p : m_processes)
+        // 3a) Agregar todos los procesos cuyo arrivalTime == currentCycle
+        while (idx < n && arrivals[idx]->arrivalTime == currentCycle)
         {
-            if (p.arrivalTime == currentCycle)
-            {
-                readyQueue.push_back({&p, p.burstTime});
-            }
+            readyQueue.push_back({arrivals[idx], arrivals[idx]->burstTime});
+            idx++;
         }
 
         // 3b) Seleccionar el proceso con menor remainingTime
-        auto it = std::min_element(readyQueue.begin(), readyQueue.end(),
-                                   [](const ExecState &a, const ExecState &b)
-                                   {
-                                       return a.remainingTime < b.remainingTime;
-                                   });
-
-        if (it != readyQueue.end())
+        if (!readyQueue.empty())
         {
-            ExecState &exec = *it;
+            auto itMin = std::min_element(
+                readyQueue.begin(), readyQueue.end(),
+                [](const ExecState &a, const ExecState &b)
+                {
+                    return a.remainingTime < b.remainingTime;
+                });
+            ExecState &exec = *itMin;
             Process *p = exec.proc;
 
             // 3c) Registrar segmento en p->segments
-            if (p->segments.empty() || p->segments.back().first + p->segments.back().second != currentCycle)
+            if (p->segments.empty() ||
+                p->segments.back().first + p->segments.back().second != currentCycle)
             {
                 p->segments.push_back({currentCycle, 1});
             }
@@ -954,14 +967,14 @@ void SchedulingPanel::ScheduleSRT()
             {
                 p->finishTime = currentCycle + 1;
                 completed++;
-                readyQueue.erase(it);
+                readyQueue.erase(itMin);
             }
         }
 
         currentCycle++;
     }
 
-    // 4) Calcular startTime y waitingTime directamente sobre m_processes
+    // 4) Calcular startTime y waitingTime
     for (auto &p : m_processes)
     {
         if (!p.segments.empty())
@@ -971,7 +984,7 @@ void SchedulingPanel::ScheduleSRT()
         }
     }
 
-    // 5) Calcular métricas de eficiencia
+    // 5) Calcular métricas
     double totalWT = 0.0, totalTAT = 0.0;
     int ultimoFin = 0;
     for (const auto &p : m_processes)
@@ -988,7 +1001,7 @@ void SchedulingPanel::ScheduleSRT()
     m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", avgTAT));
     m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", throughput));
 
-    // 6) Pasar datos al Gantt y reiniciar gráfico
+    // 6) Enviar a Gantt y reiniciar
     m_ganttChart->SetProcesses(m_processes);
     m_ganttChart->ResetChart();
 }
@@ -1354,7 +1367,6 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString &filename)
         m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", m_processes[i].priority));
     }
 
-    // Comprueba si ya se pueden habilitar los botones de “Iniciar Simulación”
     CheckEnableStart();
 }
 
@@ -1736,7 +1748,6 @@ void TimelineChart::OnTimer(wxTimerEvent &event)
     {
         m_currentCycle++;
 
-        // 🔁 Liberar recursos agendados para este ciclo
         for (auto &[recurso, ciclos] : m_pendingReleases)
         {
             while (!ciclos.empty() && ciclos.front() == m_currentCycle)
