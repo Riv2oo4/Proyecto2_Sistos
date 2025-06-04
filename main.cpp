@@ -116,6 +116,7 @@ private:
     void LoadProcessesFromFile(const wxString& filename);
     void UpdateMetrics();
     void ScheduleFIFO();
+    void ScheduleSJF();
     
     wxCheckBox* m_fifoCheck;
     wxCheckBox* m_sjfCheck;
@@ -213,6 +214,11 @@ wxBEGIN_EVENT_TABLE(SchedulingPanel, wxPanel)
     EVT_BUTTON(1003, SchedulingPanel::OnStopSimulation)
     EVT_BUTTON(1004, SchedulingPanel::OnResetSimulation)
     EVT_CHECKBOX(1010, SchedulingPanel::OnAlgorithmCheck)
+    EVT_CHECKBOX(1011, SchedulingPanel::OnAlgorithmCheck)
+    EVT_CHECKBOX(1012, SchedulingPanel::OnAlgorithmCheck)
+    EVT_CHECKBOX(1013, SchedulingPanel::OnAlgorithmCheck)
+    EVT_CHECKBOX(1014, SchedulingPanel::OnAlgorithmCheck)
+
     EVT_SPINCTRL(1005, SchedulingPanel::OnQuantumChange)
 wxEND_EVENT_TABLE()
 
@@ -317,11 +323,12 @@ SchedulingPanel::SchedulingPanel(wxWindow* parent) : wxPanel(parent) {
     
     // Algoritmos
     wxStaticBoxSizer* algBox = new wxStaticBoxSizer(wxVERTICAL, this, "Algoritmos");
-    m_fifoCheck = new wxCheckBox(this, wxID_ANY, "First In First Out (FIFO)");
-    m_sjfCheck = new wxCheckBox(this, wxID_ANY, "Shortest Job First (SJF)");
-    m_srtCheck = new wxCheckBox(this, wxID_ANY, "Shortest Remaining Time (SRT)");
-    m_rrCheck = new wxCheckBox(this, wxID_ANY, "Round Robin (RR)");
-    m_priorityCheck = new wxCheckBox(this, wxID_ANY, "Priority");
+    m_fifoCheck     = new wxCheckBox(this, 1010, "First In First Out (FIFO)");
+    m_sjfCheck      = new wxCheckBox(this, 1011, "Shortest Job First (SJF)");
+    m_srtCheck      = new wxCheckBox(this, 1012, "Shortest Remaining Time (SRT)");
+    m_rrCheck       = new wxCheckBox(this, 1013, "Round Robin (RR)");
+    m_priorityCheck = new wxCheckBox(this, 1014, "Priority");
+
     
     algBox->Add(m_fifoCheck, 0, wxALL, 2);
     algBox->Add(m_sjfCheck, 0, wxALL, 2);
@@ -535,6 +542,9 @@ void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
     if (m_fifoCheck->GetValue()) {
         ScheduleFIFO();
     }
+    else if (m_sjfCheck->GetValue()) {
+        ScheduleSJF();
+    }
     m_ganttChart->StartSimulation();
     m_startBtn->Enable(false);
     m_stopBtn->Enable(true);
@@ -731,6 +741,89 @@ void SchedulingPanel::ScheduleFIFO() {
     m_ganttChart->SetProcesses(m_processes);
 
     // 7) Reiniciamos el ciclo en Gantt para que empiece a pintar desde cero:
+    m_ganttChart->ResetChart();
+}
+
+void SchedulingPanel::ScheduleSJF() {
+    // 1) Si no hay procesos cargados, salimos
+    if (m_processes.empty()) return;
+
+    // 2) Creamos un vector local "ordenados" con copia de todos los procesos
+    //    y los ordenamos inicialmente por arrivalTime (para saber quién llega primero).
+    std::vector<Process> ordenados = m_processes;
+    std::sort(ordenados.begin(), ordenados.end(),
+              [](const Process &a, const Process &b) {
+                  return a.arrivalTime < b.arrivalTime;
+              });
+
+    // 3) Preparar la "ready queue" donde iremos metiendo punteros a procesos ya llegados
+    std::vector<Process*> readyQueue;
+    int currentCycle = 0;
+    size_t idx = 0;  // índice para ir introduciendo elementos de "ordenados"
+
+    // 4) Mientras queden procesos sin ejecutar (o listos en readyQueue)...
+    while (idx < ordenados.size() || !readyQueue.empty()) {
+        // 4a) Mover a readyQueue todos los procesos cuya arrivalTime <= currentCycle
+        while (idx < ordenados.size() && ordenados[idx].arrivalTime <= currentCycle) {
+            readyQueue.push_back(&ordenados[idx]);
+            idx++;
+        }
+
+        // 4b) Si no hay procesos en readyQueue, avanzamos currentCycle al próximo arrivalTime
+        if (readyQueue.empty()) {
+            currentCycle = ordenados[idx].arrivalTime;
+            continue;
+        }
+
+        // 4c) De la readyQueue, elegimos el que tenga el burstTime más pequeño
+        auto it = std::min_element(readyQueue.begin(), readyQueue.end(),
+                                   [](Process* a, Process* b) {
+                                       return a->burstTime < b->burstTime;
+                                   });
+        Process* elegido = *it;
+        readyQueue.erase(it); // lo sacamos de la cola
+
+        // 4d) Calculamos startTime, finishTime y waitingTime del proceso "elegido"
+        int inicio = std::max(currentCycle, elegido->arrivalTime);
+        elegido->startTime   = inicio;
+        elegido->finishTime  = inicio + elegido->burstTime;
+        elegido->waitingTime = elegido->startTime - elegido->arrivalTime;
+
+        // 4e) Actualizamos el reloj al finishTime de este proceso
+        currentCycle = elegido->finishTime;
+    }
+
+    // 5) Copiar startTime/finishTime/waitingTime de "ordenados" a "m_processes" (coincidiendo por pid)
+    for (const auto &p_done : ordenados) {
+        for (auto &orig : m_processes) {
+            if (orig.pid == p_done.pid) {
+                orig.startTime   = p_done.startTime;
+                orig.finishTime  = p_done.finishTime;
+                orig.waitingTime = p_done.waitingTime;
+                break;
+            }
+        }
+    }
+
+    // 6) Calcular métricas de eficiencia (Avg Waiting Time, Avg Turnaround Time, Throughput)
+    double sumaWT = 0.0, sumaTAT = 0.0;
+    int ultimoFin = 0;
+    for (const auto &proc : m_processes) {
+        sumaWT += proc.waitingTime;
+        sumaTAT += (proc.finishTime - proc.arrivalTime);
+        if (proc.finishTime > ultimoFin) ultimoFin = proc.finishTime;
+    }
+    double avgWT  = sumaWT / m_processes.size();
+    double avgTAT = sumaTAT / m_processes.size();
+    double throughput = double(m_processes.size()) / double(ultimoFin);
+
+    // 7) Actualizar la grilla de métricas
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", avgWT));
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", avgTAT));
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", throughput));
+
+    // 8) Pasamos estos procesos (con start/finish/waiting actualizados) al Gantt y reiniciamos el chart
+    m_ganttChart->SetProcesses(m_processes);
     m_ganttChart->ResetChart();
 }
 
