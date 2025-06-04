@@ -1329,70 +1329,83 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString &filename)
         if (line.empty())
             continue;
 
-        std::stringstream ss(line);
-        std::string pid_str, bt_str, at_str, prio_str;
-
-        // Leer cada campo hasta la coma
-        std::getline(ss, pid_str, ',');
-        std::getline(ss, bt_str, ',');
-        std::getline(ss, at_str, ',');
-        std::getline(ss, prio_str, ',');
-
-        // Función corta para eliminar espacios al inicio y fin
-        auto trim = [&](std::string &s)
-        {
-            s.erase(0, s.find_first_not_of(" \t\r\n"));
-            s.erase(s.find_last_not_of(" \t\r\n") + 1);
-        };
-        trim(pid_str);
-        trim(bt_str);
-        trim(at_str);
-        trim(prio_str);
-
-        int bt = 0, at = 0, prio = 0;
         try
         {
-            bt = std::stoi(bt_str);
-            at = std::stoi(at_str);
-            prio = std::stoi(prio_str);
+            std::stringstream ss(line);
+            std::string pid_str, bt_str, at_str, prio_str;
+
+            // Leer cada campo hasta la coma
+            std::getline(ss, pid_str, ',');
+            std::getline(ss, bt_str, ',');
+            std::getline(ss, at_str, ',');
+            std::getline(ss, prio_str, ',');
+
+            // Función corta para eliminar espacios al inicio y fin
+            auto trim = [&](std::string &s)
+            {
+                s.erase(0, s.find_first_not_of(" \t\r\n"));
+                s.erase(s.find_last_not_of(" \t\r\n") + 1);
+            };
+            trim(pid_str);
+            trim(bt_str);
+            trim(at_str);
+            trim(prio_str);
+
+            int bt = std::stoi(bt_str);
+            int at = std::stoi(at_str);
+            int prio = std::stoi(prio_str);
+
+            // Asignar colores según índice (ciclo)
+            wxColour bg = pastelBackgrounds[colorIndex % pastelBackgrounds.size()];
+            wxColour fg = textColours[colorIndex % textColours.size()];
+            colorIndex++;
+
+            Process p;
+            p.pid = wxString(pid_str);
+            p.burstTime = bt;
+            p.arrivalTime = at;
+            p.priority = prio;
+            p.color = fg; // color de texto en la vista
+            p.startTime = 0;
+            p.finishTime = 0;
+            p.waitingTime = 0;
+            m_processes.push_back(p);
+
+            // Insertar fila en el ListCtrl
+            long idx = m_processListCtrl->InsertItem(
+                m_processListCtrl->GetItemCount(),
+                p.pid);
+            m_processListCtrl->SetItem(idx, 1, wxString::Format("%d", p.burstTime));
+            m_processListCtrl->SetItem(idx, 2, wxString::Format("%d", p.arrivalTime));
+            m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", p.priority));
+
+            // Aplicar estilos: fondo pastel y texto oscuro
+            m_processListCtrl->SetItemBackgroundColour(idx, bg);
+            m_processListCtrl->SetItemTextColour(idx, fg);
+
+            // Fuente en negrita para PID
+            wxFont boldFont = m_processListCtrl->GetFont();
+            boldFont.SetWeight(wxFONTWEIGHT_BOLD);
+            m_processListCtrl->SetItemFont(idx, boldFont);
+        }
+        catch (const std::invalid_argument &)
+        {
+            wxMessageBox("Formato inválido en línea: \"" + wxString(line) + "\". Se omite.",
+                         "Advertencia", wxOK | wxICON_WARNING);
+            continue;
+        }
+        catch (const std::out_of_range &)
+        {
+            wxMessageBox("Valor fuera de rango en línea: \"" + wxString(line) + "\". Se omite.",
+                         "Advertencia", wxOK | wxICON_WARNING);
+            continue;
         }
         catch (...)
         {
+            wxMessageBox("Error desconocido al procesar línea: \"" + wxString(line) + "\". Se omite.",
+                         "Advertencia", wxOK | wxICON_WARNING);
             continue;
         }
-
-        // Asignar colores según índice (ciclo)
-        wxColour bg = pastelBackgrounds[colorIndex % pastelBackgrounds.size()];
-        wxColour fg = textColours[colorIndex % textColours.size()];
-        colorIndex++;
-
-        Process p;
-        p.pid = wxString(pid_str);
-        p.burstTime = bt;
-        p.arrivalTime = at;
-        p.priority = prio;
-        p.color = fg; // color de texto en la vista
-        p.startTime = 0;
-        p.finishTime = 0;
-        p.waitingTime = 0;
-        m_processes.push_back(p);
-
-        // Insertar fila en el ListCtrl
-        long idx = m_processListCtrl->InsertItem(
-            m_processListCtrl->GetItemCount(),
-            p.pid);
-        m_processListCtrl->SetItem(idx, 1, wxString::Format("%d", p.burstTime));
-        m_processListCtrl->SetItem(idx, 2, wxString::Format("%d", p.arrivalTime));
-        m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", p.priority));
-
-        // Aplicar estilos: fondo pastel y texto oscuro
-        m_processListCtrl->SetItemBackgroundColour(idx, bg);
-        m_processListCtrl->SetItemTextColour(idx, fg);
-
-        // Fuente en negrita para PID
-        wxFont boldFont = m_processListCtrl->GetFont();
-        boldFont.SetWeight(wxFONTWEIGHT_BOLD);
-        m_processListCtrl->SetItemFont(idx, boldFont);
     }
 
     // Ajustar automáticamente ancho de columnas
