@@ -122,7 +122,7 @@ private:
     void ScheduleSJF();
     void ScheduleSRT();
     void ScheduleRR();
-
+    void SchedulePriority();
     
     wxCheckBox* m_fifoCheck;
     wxCheckBox* m_sjfCheck;
@@ -556,6 +556,9 @@ void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
     }
     else if (m_rrCheck->GetValue()) {
         ScheduleRR();
+    }
+    else if (m_priorityCheck->GetValue()) {
+        SchedulePriority();
     }
     
     m_ganttChart->StartSimulation();
@@ -1041,6 +1044,80 @@ void SchedulingPanel::ScheduleRR() {
     m_ganttChart->ResetChart();
 }
 
+void SchedulingPanel::SchedulePriority() {
+    if (m_processes.empty()) return;
+
+    std::vector<Process> procesos = m_processes;
+    int n = procesos.size();
+
+    for (auto& p : procesos) {
+        p.startTime = -1;
+        p.finishTime = -1;
+        p.waitingTime = 0;
+        p.segments.clear();
+    }
+
+    std::vector<Process*> readyQueue;
+    int currentCycle = 0;
+    size_t idx = 0;
+
+    std::sort(procesos.begin(), procesos.end(), [](const Process& a, const Process& b) {
+        return a.arrivalTime < b.arrivalTime;
+    });
+
+    while (idx < procesos.size() || !readyQueue.empty()) {
+        while (idx < procesos.size() && procesos[idx].arrivalTime <= currentCycle) {
+            readyQueue.push_back(&procesos[idx]);
+            idx++;
+        }
+
+        if (readyQueue.empty()) {
+            currentCycle = procesos[idx].arrivalTime;
+            continue;
+        }
+
+        auto it = std::min_element(readyQueue.begin(), readyQueue.end(),
+            [](Process* a, Process* b) {
+                return a->priority < b->priority;
+            });
+
+        Process* elegido = *it;
+        readyQueue.erase(it);
+
+        int inicio = std::max(currentCycle, elegido->arrivalTime);
+        elegido->startTime = inicio;
+        elegido->finishTime = inicio + elegido->burstTime;
+        elegido->waitingTime = elegido->startTime - elegido->arrivalTime;
+        elegido->segments.push_back({inicio, elegido->burstTime});
+        currentCycle = elegido->finishTime;
+    }
+
+    for (const auto& p_src : procesos) {
+        for (auto& p_dst : m_processes) {
+            if (p_dst.pid == p_src.pid) {
+                p_dst.startTime = p_src.startTime;
+                p_dst.finishTime = p_src.finishTime;
+                p_dst.waitingTime = p_src.waitingTime;
+                p_dst.segments = p_src.segments;
+            }
+        }
+    }
+
+    double totalWT = 0, totalTAT = 0;
+    int ultimoFin = 0;
+    for (const auto& p : m_processes) {
+        totalWT += p.waitingTime;
+        totalTAT += (p.finishTime - p.arrivalTime);
+        ultimoFin = std::max(ultimoFin, p.finishTime);
+    }
+
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", totalWT / n));
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", totalTAT / n));
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", double(n) / ultimoFin));
+
+    m_ganttChart->SetProcesses(m_processes);
+    m_ganttChart->ResetChart();
+}
 
 void SchedulingPanel::UpdateMetrics() {
     // Calcular y mostrar metricas
