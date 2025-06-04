@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <algorithm>
 
 
 class MainFrame;
@@ -26,7 +27,12 @@ struct Process {
     int arrivalTime;
     int priority;
     wxColour color;
+
+    int startTime    = 0;
+    int finishTime   = 0;
+    int waitingTime  = 0;
 };
+
 
 struct Resource {
     wxString name;
@@ -109,6 +115,7 @@ private:
     void OnQuantumChange(wxSpinEvent& event);
     void LoadProcessesFromFile(const wxString& filename);
     void UpdateMetrics();
+    void ScheduleFIFO();
     
     wxCheckBox* m_fifoCheck;
     wxCheckBox* m_sjfCheck;
@@ -205,7 +212,7 @@ wxBEGIN_EVENT_TABLE(SchedulingPanel, wxPanel)
     EVT_BUTTON(1002, SchedulingPanel::OnStartSimulation)
     EVT_BUTTON(1003, SchedulingPanel::OnStopSimulation)
     EVT_BUTTON(1004, SchedulingPanel::OnResetSimulation)
-    EVT_CHECKBOX(wxID_ANY, SchedulingPanel::OnAlgorithmCheck)
+    EVT_CHECKBOX(1010, SchedulingPanel::OnAlgorithmCheck)
     EVT_SPINCTRL(1005, SchedulingPanel::OnQuantumChange)
 wxEND_EVENT_TABLE()
 
@@ -525,6 +532,9 @@ void SchedulingPanel::OnLoadProcesses(wxCommandEvent& event) {
 }
 
 void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
+    if (m_fifoCheck->GetValue()) {
+        ScheduleFIFO();
+    }
     m_ganttChart->StartSimulation();
     m_startBtn->Enable(false);
     m_stopBtn->Enable(true);
@@ -543,12 +553,25 @@ void SchedulingPanel::OnResetSimulation(wxCommandEvent& event) {
 }
 
 void SchedulingPanel::OnAlgorithmCheck(wxCommandEvent& event) {
-    // Actualizar estado de simulacion basado en algoritmos seleccionados
-    bool anySelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || 
-                      m_srtCheck->GetValue() || m_rrCheck->GetValue() || 
-                      m_priorityCheck->GetValue();
+    // 1) Si selecciona FIFO, deseleccionar los demás (opcional)
+    if (event.GetId() == 1010 && m_fifoCheck->GetValue()) {
+        // Desmarcar SJF, SRT, RR, Priority (si no quieres que se mezclen)
+        m_sjfCheck->SetValue(false);
+        m_srtCheck->SetValue(false);
+        m_rrCheck->SetValue(false);
+        m_priorityCheck->SetValue(false);
+    }
+    // … Similar para los demás checkboxes, si solo permites uno a la vez …
+
+    // 2) Habilitar o deshabilitar el botón “Iniciar Simulación”
+    bool anySelected = m_fifoCheck->GetValue()
+                    || m_sjfCheck->GetValue()
+                    || m_srtCheck->GetValue()
+                    || m_rrCheck->GetValue()
+                    || m_priorityCheck->GetValue();
     m_startBtn->Enable(anySelected && !m_processes.empty());
 }
+
 
 void SchedulingPanel::OnQuantumChange(wxSpinEvent& event) {
     // Actualizar quantum para Round Robin
@@ -607,8 +630,18 @@ void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
 
         // Elegir color cíclicamente
         wxColour color = colors[colorIndex++ % colors.size()];
-        Process p = { wxString(pid_str), bt, at, prio, color };
+        Process p;
+        p.pid         = wxString(pid_str);
+        p.burstTime   = bt;
+        p.arrivalTime = at;
+        p.priority    = prio;
+        p.color       = color;
+        p.startTime   = 0;
+        p.finishTime  = 0;
+        p.waitingTime = 0;
+
         m_processes.push_back(p);
+
     }
 
     // Actualizar el wxListCtrl de la vista
@@ -630,6 +663,75 @@ void SchedulingPanel::LoadProcessesFromFile(const wxString& filename) {
     // Pasarle los procesos al Gantt (para la vista gráfica)
     m_ganttChart->SetProcesses(m_processes);
     UpdateMetrics();
+}
+
+
+void SchedulingPanel::ScheduleFIFO() {
+    // 1) Si no hay procesos cargados, salimos.
+    if (m_processes.empty()) return;
+
+    // 2) Ordenamos los procesos por arrivalTime (FIFO).
+    //    Para no reordenar el vector original en pantalla, creamos una copia local:
+    std::vector<Process> ordenados = m_processes;
+    std::sort(ordenados.begin(), ordenados.end(), [](const Process &a, const Process &b) {
+        return a.arrivalTime < b.arrivalTime;
+    });
+
+    // 3) Recorremos en orden y calculamos startTime/finishTime/waitingTime
+    int currentCycle = 0;
+    for (auto &p : ordenados) {
+        // El proceso espera hasta que llega (arrivalTime) o hasta que termine el anterior:
+        int inicio = std::max(currentCycle, p.arrivalTime);
+        p.startTime  = inicio;
+        p.finishTime = inicio + p.burstTime;
+        p.waitingTime = p.startTime - p.arrivalTime;
+        currentCycle = p.finishTime;
+    }
+
+    // 4) Ahora volcamos esos tiempos a m_processes “original” para que Gantt pueda leerlos:
+    //    Buscamos cada pid en m_processes y copiamos sus startTime/finishTime/waitingTime
+    for (auto &ord : ordenados) {
+        for (auto &orig : m_processes) {
+            if (orig.pid == ord.pid) {
+                orig.startTime   = ord.startTime;
+                orig.finishTime  = ord.finishTime;
+                orig.waitingTime = ord.waitingTime;
+                break;
+            }
+        }
+    }
+
+    // 5) Actualizar métricas: 
+    //    Avg Waiting Time = suma(waitingTime) / N
+    double sumaWT = 0;
+    for (auto &p : m_processes) {
+        sumaWT += p.waitingTime;
+    }
+    double avgWT = sumaWT / m_processes.size();
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", avgWT));
+
+    // Turnaround Time promedio = (finishTime - arrivalTime) promedio
+    double sumaTAT = 0;
+    for (auto &p : m_processes) {
+        sumaTAT += (p.finishTime - p.arrivalTime);
+    }
+    double avgTAT = sumaTAT / m_processes.size();
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", avgTAT));
+
+    // Throughput = número de procesos / tiempo total de simulación
+    //   supongamos que “tiempo total” es finishTime del último
+    int ultimoFin = 0;
+    for (auto &p : m_processes) {
+        ultimoFin = std::max(ultimoFin, p.finishTime);
+    }
+    double throughput = double(m_processes.size()) / double(ultimoFin);
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", throughput));
+
+    // 6) Finalmente, “pasamos” estos procesos a Gantt para que dibuje:
+    m_ganttChart->SetProcesses(m_processes);
+
+    // 7) Reiniciamos el ciclo en Gantt para que empiece a pintar desde cero:
+    m_ganttChart->ResetChart();
 }
 
 void SchedulingPanel::UpdateMetrics() {
@@ -742,7 +844,15 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString& filename) {
         int prio = std::stoi(prio_str);
 
         wxColour color = colors[colorIndex++ % colors.size()];
-        Process p = { wxString(pid_str), bt, at, prio, color };
+        Process p;
+        p.pid         = wxString(pid_str);
+        p.burstTime   = bt;
+        p.arrivalTime = at;
+        p.priority    = prio;
+        p.color       = color;
+        p.startTime   = 0;
+        p.finishTime  = 0;
+        p.waitingTime = 0;
         m_processes.push_back(p);
     }
 
@@ -882,49 +992,75 @@ void GanttChart::OnPaint(wxPaintEvent& event) {
 
 void GanttChart::DrawTimeAxis(wxPaintDC& dc) {
     dc.SetPen(*wxBLACK_PEN);
-    
-    // Linea base del tiempo
     int baseY = 60;
     dc.DrawLine(50, baseY, 800, baseY);
-    
-    // Marcas de tiempo
+
     for (int i = 0; i <= 20; ++i) {
-        int x = 50 + i * 30;
+        int x = 50 + i * 30;                      // 30px por ciclo
         dc.DrawLine(x, baseY - 5, x, baseY + 5);
         dc.DrawText(wxString::Format("%d", i), x - 5, baseY + 10);
     }
 }
 
+
 void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
-    int blockHeight = 25;
-    int baseY = 60;
-    
-    // Simular ejecucion de procesos (ejemplo simplificado)
-    for (size_t i = 0; i < m_processes.size() && i * 3 < m_currentCycle; ++i) {
-        const Process& process = m_processes[i];
-        
-        // Calcular posicion y tamaño del bloque
-        int startX = 50 + (i * 3) * 30;  // Ejemplo simplificado
-        int width = process.burstTime * 15;  // Escala temporal
-        int y = baseY - blockHeight - 10;
-        
-        // Dibujar bloque del proceso
-        dc.SetBrush(wxBrush(process.color));
-        dc.SetPen(wxPen(process.color.ChangeLightness(80), 2));
-        
-        if (m_isRunning && i * 3 <= m_currentCycle) {
-            // Animacion: mostrar progreso
-            int currentWidth = std::min(width, static_cast<int>((m_currentCycle - i * 3) * 15));
-            dc.DrawRectangle(startX, y, currentWidth, blockHeight);
-        } else if (!m_isRunning) {
-            dc.DrawRectangle(startX, y, width, blockHeight);
+    // Constantes de dibujo
+    const int baseY = 80;           // Y donde arranca el primer proceso
+    const int rowHeight = 30;       // Espacio vertical entre filas
+    const int blockHeight = 25;     // Alto de cada bloque de proceso
+
+    for (size_t i = 0; i < m_processes.size(); ++i) {
+        const Process &proc = m_processes[i];
+        if (proc.burstTime <= 0) continue;
+
+        // 1) Ubicación horizontal de inicio: 50px de margen + 30px * startTime
+        int x = 50 + proc.startTime * 30;
+
+        // 2) Ancho del bloque: 30px * burstTime  (igual escala que el eje)
+        int w = proc.burstTime * 30;
+
+        // 3) Y vertical según la fila “i”
+        int y = baseY + i * rowHeight;
+
+        if (m_isRunning) {
+            if (m_currentCycle >= proc.startTime) {
+                // Cuánto ya se completó: 
+                int progreso = std::min(proc.burstTime, m_currentCycle - proc.startTime);
+                int anchoProgreso = progreso * 30;  // misma escala
+
+                // Dibujar parte completada en color
+                dc.SetBrush(wxBrush(proc.color));
+                dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
+                dc.DrawRectangle(x, y, anchoProgreso, blockHeight);
+
+                // Dibujar resto pendiente en gris claro
+                if (anchoProgreso < w) {
+                    dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
+                    dc.SetPen(wxPen(*wxLIGHT_GREY, 1));
+                    dc.DrawRectangle(x + anchoProgreso, y, w - anchoProgreso, blockHeight);
+                }
+            }
+            else {
+                // Aún no ha empezado: todo el bloque en gris
+                dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
+                dc.SetPen(wxPen(*wxLIGHT_GREY, 1));
+                dc.DrawRectangle(x, y, w, blockHeight);
+            }
         }
-        
-        // Etiqueta del proceso
+        else {
+            // Si no está en ejecución, pintar bloque completo en su color
+            dc.SetBrush(wxBrush(proc.color));
+            dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
+            dc.DrawRectangle(x, y, w, blockHeight);
+        }
+
+        // Etiquetar PID dentro del bloque (en blanco)
         dc.SetTextForeground(*wxWHITE);
-        dc.DrawText(process.pid, startX + 5, y + 5);
+        dc.DrawText(proc.pid, x + 5, y + 5);
     }
 }
+
+
 
 void GanttChart::OnTimer(wxTimerEvent& event) {
     if (m_isRunning) {
