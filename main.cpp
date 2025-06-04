@@ -31,6 +31,8 @@ struct Process {
     int startTime    = 0;
     int finishTime   = 0;
     int waitingTime  = 0;
+
+    std::vector<std::pair<int,int>> segments; 
 };
 
 
@@ -117,6 +119,8 @@ private:
     void UpdateMetrics();
     void ScheduleFIFO();
     void ScheduleSJF();
+    void ScheduleSRT();
+
     
     wxCheckBox* m_fifoCheck;
     wxCheckBox* m_sjfCheck;
@@ -545,6 +549,9 @@ void SchedulingPanel::OnStartSimulation(wxCommandEvent& event) {
     else if (m_sjfCheck->GetValue()) {
         ScheduleSJF();
     }
+    else if (m_srtCheck->GetValue()) {
+        ScheduleSRT();
+    }
     m_ganttChart->StartSimulation();
     m_startBtn->Enable(false);
     m_stopBtn->Enable(true);
@@ -827,6 +834,101 @@ void SchedulingPanel::ScheduleSJF() {
     m_ganttChart->ResetChart();
 }
 
+void SchedulingPanel::ScheduleSRT() {
+    if (m_processes.empty()) return;
+
+    struct ExecState {
+        Process* proc;
+        int remainingTime;
+    };
+
+    std::vector<ExecState> readyQueue;
+    std::vector<Process> procesos = m_processes;
+    for (auto& p : procesos) {
+        p.startTime = -1;
+        p.finishTime = -1;
+        p.waitingTime = 0;
+        p.segments.clear();
+    }
+
+    int currentCycle = 0;
+    int completed = 0;
+    int n = procesos.size();
+
+    while (completed < n) {
+        // Insertar procesos que llegan este ciclo
+        for (auto& p : procesos) {
+            if (p.arrivalTime == currentCycle) {
+                readyQueue.push_back({&p, p.burstTime});
+            }
+        }
+
+        // Seleccionar el de menor tiempo restante
+        auto it = std::min_element(readyQueue.begin(), readyQueue.end(),
+            [](const ExecState& a, const ExecState& b) {
+                return a.remainingTime < b.remainingTime;
+            });
+
+        if (it != readyQueue.end()) {
+            ExecState& exec = *it;
+            Process* p = exec.proc;
+
+            // Crear o extender segmento actual
+            if (p->segments.empty() || p->segments.back().first + p->segments.back().second != currentCycle) {
+                p->segments.push_back({currentCycle, 1});
+            } else {
+                p->segments.back().second += 1;
+            }
+
+            exec.remainingTime--;
+            if (exec.remainingTime == 0) {
+                p->finishTime = currentCycle + 1;
+                completed++;
+                readyQueue.erase(it);
+            }
+        }
+
+        currentCycle++;
+    }
+
+    // Calcular startTime y waitingTime
+    for (auto& p : procesos) {
+        p.startTime = p.segments.front().first;
+        p.waitingTime = p.finishTime - p.arrivalTime - p.burstTime;
+    }
+
+    // Copiar a m_processes
+    for (auto& p_new : procesos) {
+        for (auto& p_old : m_processes) {
+            if (p_new.pid == p_old.pid) {
+                p_old.startTime = p_new.startTime;
+                p_old.finishTime = p_new.finishTime;
+                p_old.waitingTime = p_new.waitingTime;
+                p_old.segments = p_new.segments;
+            }
+        }
+    }
+
+    // Calcular métricas
+    double totalWT = 0, totalTAT = 0;
+    int ultimoFin = 0;
+    for (const auto& p : m_processes) {
+        totalWT += p.waitingTime;
+        totalTAT += (p.finishTime - p.arrivalTime);
+        if (p.finishTime > ultimoFin)
+            ultimoFin = p.finishTime;
+    }
+
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", totalWT / n));
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", totalTAT / n));
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", double(n) / ultimoFin));
+
+    // Pasar al Gantt
+    m_ganttChart->SetProcesses(m_processes);
+    m_ganttChart->ResetChart();
+}
+
+
 void SchedulingPanel::UpdateMetrics() {
     // Calcular y mostrar metricas
     m_metricsGrid->SetCellValue(0, 1, "5.2");
@@ -1097,36 +1199,46 @@ void GanttChart::DrawTimeAxis(wxPaintDC& dc) {
 
 
 void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
-    // Constantes de dibujo
-    const int baseY = 80;           // Y donde arranca el primer proceso
-    const int rowHeight = 30;       // Espacio vertical entre filas
-    const int blockHeight = 25;     // Alto de cada bloque de proceso
+    const int baseY = 80;            // Y de inicio
+    const int rowHeight = 30;        // Altura entre filas
+    const int blockHeight = 25;      // Alto del bloque de proceso
+    const int pxPerCycle = 30;       // Escala horizontal
+    const int marginX = 50;          // Margen izquierdo
 
     for (size_t i = 0; i < m_processes.size(); ++i) {
-        const Process &proc = m_processes[i];
-        if (proc.burstTime <= 0) continue;
+        const Process& proc = m_processes[i];
+        int y = baseY + static_cast<int>(i) * rowHeight;
 
-        // 1) Ubicación horizontal de inicio: 50px de margen + 30px * startTime
-        int x = 50 + proc.startTime * 30;
+        // Si hay segmentos definidos (caso SRT, RR, FIFO adaptado...)
+        if (!proc.segments.empty()) {
+            for (const auto& seg : proc.segments) {
+                int start = seg.first;
+                int length = seg.second;
+                int x = marginX + start * pxPerCycle;
+                int w = length * pxPerCycle;
 
-        // 2) Ancho del bloque: 30px * burstTime  (igual escala que el eje)
-        int w = proc.burstTime * 30;
+                dc.SetBrush(wxBrush(proc.color));
+                dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
+                dc.DrawRectangle(x, y, w, blockHeight);
 
-        // 3) Y vertical según la fila “i”
-        int y = baseY + i * rowHeight;
+                // Etiquetar PID dentro del bloque
+                dc.SetTextForeground(*wxWHITE);
+                dc.DrawText(proc.pid, x + 5, y + 5);
+            }
+        }
+        // Si no hay segmentos, usar startTime y burstTime como antes (para compatibilidad)
+        else if (proc.burstTime > 0) {
+            int x = marginX + proc.startTime * pxPerCycle;
+            int w = proc.burstTime * pxPerCycle;
 
-        if (m_isRunning) {
-            if (m_currentCycle >= proc.startTime) {
-                // Cuánto ya se completó: 
+            if (m_isRunning && m_currentCycle >= proc.startTime) {
                 int progreso = std::min(proc.burstTime, m_currentCycle - proc.startTime);
-                int anchoProgreso = progreso * 30;  // misma escala
+                int anchoProgreso = progreso * pxPerCycle;
 
-                // Dibujar parte completada en color
                 dc.SetBrush(wxBrush(proc.color));
                 dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
                 dc.DrawRectangle(x, y, anchoProgreso, blockHeight);
 
-                // Dibujar resto pendiente en gris claro
                 if (anchoProgreso < w) {
                     dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
                     dc.SetPen(wxPen(*wxLIGHT_GREY, 1));
@@ -1134,24 +1246,17 @@ void GanttChart::DrawProcessBlocks(wxPaintDC& dc) {
                 }
             }
             else {
-                // Aún no ha empezado: todo el bloque en gris
-                dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
-                dc.SetPen(wxPen(*wxLIGHT_GREY, 1));
+                dc.SetBrush(wxBrush(proc.color));
+                dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
                 dc.DrawRectangle(x, y, w, blockHeight);
             }
-        }
-        else {
-            // Si no está en ejecución, pintar bloque completo en su color
-            dc.SetBrush(wxBrush(proc.color));
-            dc.SetPen(wxPen(proc.color.ChangeLightness(80), 2));
-            dc.DrawRectangle(x, y, w, blockHeight);
-        }
 
-        // Etiquetar PID dentro del bloque (en blanco)
-        dc.SetTextForeground(*wxWHITE);
-        dc.DrawText(proc.pid, x + 5, y + 5);
+            dc.SetTextForeground(*wxWHITE);
+            dc.DrawText(proc.pid, x + 5, y + 5);
+        }
     }
 }
+
 
 
 
