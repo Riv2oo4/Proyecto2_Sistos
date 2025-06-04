@@ -15,7 +15,8 @@
 #include <map>
 #include <algorithm>
 #include <queue>
-
+#include <tuple>
+#include <set>
 
 class MainFrame;
 class GanttChart;
@@ -100,6 +101,11 @@ private:
     std::vector<Action> m_actions;
     int m_currentCycle;
     bool m_isRunning;
+    std::map<wxString, int> m_resourceStates;
+    std::set<std::tuple<wxString, wxString, int>> m_actionsDone; 
+    std::map<std::tuple<wxString, wxString, int>, int> m_actionStartCycle;
+
+
     
     wxDECLARE_EVENT_TABLE();
 };
@@ -1538,28 +1544,33 @@ void TimelineChart::DrawTimeline(wxPaintDC& dc) {
         dc.DrawText(process.pid, 10, y);
         
         // Buscar acciones de este proceso
-        for (const Action& action : m_actions) {
-            if (action.pid == process.pid && action.cycle <= m_currentCycle) {
-                int x = 50 + action.cycle * 30;
-                
-                // Color segun el tipo de accion y estado
-                wxColour actionColor = (action.action == "READ") ? wxColour(100, 200, 100) : wxColour(200, 100, 100);
-                
-                // Verificar si el recurso esta disponible (simulacion simplificada)
-                bool resourceAvailable = true;  // Aqui iria la logica real de disponibilidad
-                
-                if (!resourceAvailable) {
-                    actionColor = wxColour(200, 200, 100);  // Amarillo para WAITING
-                }
-                
-                dc.SetBrush(wxBrush(actionColor));
-                dc.DrawRectangle(x - 10, y, 20, 20);
-                
-                // Etiqueta de la accion
-                dc.SetTextForeground(*wxBLACK);
-                dc.DrawText(action.action.Left(1), x - 5, y + 2);
+        // Dibujar acciones de este proceso
+    for (const Action& action : m_actions) {
+        if (action.pid == process.pid && action.cycle <= m_currentCycle) {
+            auto key = std::make_tuple(action.pid, action.resource, action.cycle);
+            int x = 50 + action.cycle * 30;
+            wxColour color;
+
+            if (m_actionsDone.count(key)) {
+                // Ya fue procesada, volver a dibujar con su color correcto
+                color = (action.action == "READ") ? wxColour(100, 200, 100)
+                                                : wxColour(200, 100, 100);
+            } else if (m_resourceStates[action.resource] > 0) {
+                color = (action.action == "READ") ? wxColour(100, 200, 100)
+                                                : wxColour(200, 100, 100);
+                m_resourceStates[action.resource]--;
+                m_actionsDone.insert(key);
+            } else {
+                color = wxColour(200, 200, 100); // WAITING
             }
+
+            dc.SetBrush(wxBrush(color));
+            dc.DrawRectangle(x - 10, y, 20, 20);
+            dc.SetTextForeground(*wxBLACK);
+            dc.DrawText(action.action.Left(1), x - 5, y + 2);
         }
+    }
+
     }
     
     // Leyenda
@@ -1619,15 +1630,21 @@ void TimelineChart::ResetChart() {
     m_isRunning = false;
     m_timer->Stop();
     Scroll(0, 0);
+    m_actionStartCycle.clear();
     Refresh();
 }
 
-void TimelineChart::SetData(const std::vector<Process>& processes, 
-                           const std::vector<Resource>& resources,
-                           const std::vector<Action>& actions) {
+void TimelineChart::SetData(const std::vector<Process>& processes, const std::vector<Resource>& resources, const std::vector<Action>& actions) {
     m_processes = processes;
     m_resources = resources;
     m_actions = actions;
+    m_resourceStates.clear();
+    m_actionsDone.clear();
+
+    for (const auto& r : resources) {
+    m_resourceStates[r.name] = r.counter;
+    }
+
     Refresh();
 }
 
