@@ -81,34 +81,40 @@ private:
 
 // Panel para timeline de sincronizacion
 class TimelineChart : public wxScrolledWindow {
-public:
-    TimelineChart(wxWindow* parent);
-    void StartSimulation();
-    void StopSimulation();
-    void ResetChart();
-    void SetData(const std::vector<Process>& processes, 
-                 const std::vector<Resource>& resources,
-                 const std::vector<Action>& actions);
+    public:
+        TimelineChart(wxWindow* parent);
+        void StartSimulation();
+        void StopSimulation();
+        void ResetChart();
+        void SetData(const std::vector<Process>& processes, 
+                     const std::vector<Resource>& resources,
+                     const std::vector<Action>& actions);
     
-private:
-    void OnPaint(wxPaintEvent& event);
-    void OnTimer(wxTimerEvent& event);
-    void DrawTimeline(wxPaintDC& dc);
+        // Setter para el modo de sincronización (Mutex Locks o Semaforos)
+        void SetSyncMode(const wxString& mode) { m_syncMode = mode; }
+        
+    private:
+        void OnPaint(wxPaintEvent& event);
+        void OnTimer(wxTimerEvent& event);
+        void DrawTimeline(wxPaintDC& dc);
     
-    wxTimer* m_timer;
-    std::vector<Process> m_processes;
-    std::vector<Resource> m_resources;
-    std::vector<Action> m_actions;
-    int m_currentCycle;
-    bool m_isRunning;
-    std::map<wxString, int> m_resourceStates;
-    std::set<std::tuple<wxString, wxString, int>> m_actionsDone; 
-    std::map<std::tuple<wxString, wxString, int>, int> m_actionStartCycle;
-
-
+        wxTimer* m_timer;
+        std::vector<Process> m_processes;
+        std::vector<Resource> m_resources;
+        std::vector<Action> m_actions;
+        int m_currentCycle;
+        bool m_isRunning;
     
-    wxDECLARE_EVENT_TABLE();
-};
+        std::map<wxString, int> m_resourceStates;
+        std::set<std::tuple<wxString, wxString, int>> m_actionsDone; 
+        std::map<std::tuple<wxString, wxString, int>, int> m_actionStartCycle;
+    
+        // ✅ Agregado:
+        wxString m_syncMode; // "Mutex Locks" o "Semaforos"
+        std::map<wxString, std::queue<int>> m_pendingReleases;
+    
+        wxDECLARE_EVENT_TABLE();
+    };
 
 // Panel de calendarizacion
 class SchedulingPanel : public wxPanel {
