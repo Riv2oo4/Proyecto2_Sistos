@@ -259,12 +259,34 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
 
     // Implementaciones
 
-    bool OSSimulatorApp::OnInit()
+bool OSSimulatorApp::OnInit()
 {
-    MainFrame *frame = new MainFrame();
-    frame->Show(true);
-    return true;
+    try
+    {
+        MainFrame* frame = new MainFrame();
+        frame->Show(true);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        wxMessageBox(
+            wxString::Format("Error iniciando la aplicación:\n%s", e.what()),
+            "Error",
+            wxOK | wxICON_ERROR
+        );
+        return false;
+    }
+    catch (...)
+    {
+        wxMessageBox(
+            "Error desconocido iniciando la aplicación.",
+            "Error",
+            wxOK | wxICON_ERROR
+        );
+        return false;
+    }
 }
+
 
 MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "Simulador de Sistemas Operativos",
                                  wxDefaultPosition, wxSize(1200, 800))
@@ -1869,4 +1891,5 @@ void TimelineChart::SetData(const std::vector<Process> &processes, const std::ve
 }
 
 // Punto de entrada de la aplicacion
+
 wxIMPLEMENT_APP(OSSimulatorApp);
