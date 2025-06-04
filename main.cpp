@@ -115,6 +115,7 @@ class TimelineChart : public wxScrolledWindow {
     
         wxDECLARE_EVENT_TABLE();
     };
+    
 
 // Panel de calendarizacion
 class SchedulingPanel : public wxPanel {
@@ -1528,98 +1529,112 @@ void TimelineChart::OnPaint(wxPaintEvent& event) {
 
 void TimelineChart::DrawTimeline(wxPaintDC& dc) {
     dc.SetPen(*wxBLACK_PEN);
-    
-    // Linea base del tiempo
+
+    // Línea base del tiempo
     int baseY = 60;
     dc.DrawLine(50, baseY, 800, baseY);
-    
+
     // Marcas de tiempo
     for (int i = 0; i <= 20; ++i) {
         int x = 50 + i * 30;
         dc.DrawLine(x, baseY - 5, x, baseY + 5);
         dc.DrawText(wxString::Format("%d", i), x - 5, baseY + 10);
     }
-    
-    // Dibujar acciones de procesos
+
+    // Dibujar acciones por proceso
     int rowHeight = 30;
     for (size_t i = 0; i < m_processes.size(); ++i) {
         const Process& process = m_processes[i];
         int y = baseY + 20 + i * rowHeight;
-        
-        // Etiqueta del proceso
+
         dc.DrawText(process.pid, 10, y);
-        
-        // Buscar acciones de este proceso
-        // Dibujar acciones de este proceso
-    for (const Action& action : m_actions) {
-        if (action.pid == process.pid && action.cycle <= m_currentCycle) {
-            auto key = std::make_tuple(action.pid, action.resource, action.cycle);
-            int x = 50 + action.cycle * 30;
-            wxColour color;
 
-            if (m_actionsDone.count(key)) {
-                // Ya fue procesada, volver a dibujar con su color correcto
-                color = (action.action == "READ") ? wxColour(100, 200, 100)
-                                                : wxColour(200, 100, 100);
-            } else if (m_resourceStates[action.resource] > 0) {
-                color = (action.action == "READ") ? wxColour(100, 200, 100)
-                                                : wxColour(200, 100, 100);
-                m_resourceStates[action.resource]--;
-                m_actionsDone.insert(key);
-            } else {
-                color = wxColour(200, 200, 100); // WAITING
+        for (const Action& action : m_actions) {
+            if (action.pid == process.pid && action.cycle <= m_currentCycle) {
+                auto key = std::make_tuple(action.pid, action.resource, action.cycle);
+                int x = 50 + action.cycle * 30;
+                wxColour color;
+
+                // --- lógica de sincronización (mutex/semaforo) ---
+                bool esMutex = (m_syncMode == "Mutex Locks");
+
+                if (m_actionsDone.count(key)) {
+                    // Ya ejecutada, mostrar normalmente
+                    color = (action.action == "READ") ? wxColour(100, 200, 100)
+                                                      : wxColour(200, 100, 100);
+                } else if ((esMutex && m_resourceStates[action.resource] == 1) ||
+                           (!esMutex && m_resourceStates[action.resource] > 0)) {
+                    // ACCESSED
+                    color = (action.action == "READ") ? wxColour(100, 200, 100)
+                                                      : wxColour(200, 100, 100);
+
+                    m_resourceStates[action.resource]--;
+                    m_pendingReleases[action.resource].push(m_currentCycle + 1); // liberar en siguiente ciclo
+                    m_actionsDone.insert(key);
+                } else {
+                    // WAITING
+                    color = wxColour(200, 200, 100);
+                }
+
+                dc.SetBrush(wxBrush(color));
+                dc.DrawRectangle(x - 10, y, 20, 20);
+                dc.SetTextForeground(*wxBLACK);
+                dc.DrawText(action.action.Left(1), x - 5, y + 2);
             }
-
-            dc.SetBrush(wxBrush(color));
-            dc.DrawRectangle(x - 10, y, 20, 20);
-            dc.SetTextForeground(*wxBLACK);
-            dc.DrawText(action.action.Left(1), x - 5, y + 2);
         }
     }
 
-    }
-    
     // Leyenda
     int legendY = baseY + 20 + m_processes.size() * rowHeight + 20;
     dc.DrawText("Leyenda:", 10, legendY);
-    
+
     dc.SetBrush(wxBrush(wxColour(100, 200, 100)));
     dc.DrawRectangle(80, legendY, 15, 15);
     dc.DrawText("READ", 100, legendY);
-    
+
     dc.SetBrush(wxBrush(wxColour(200, 100, 100)));
     dc.DrawRectangle(150, legendY, 15, 15);
     dc.DrawText("WRITE", 170, legendY);
-    
+
     dc.SetBrush(wxBrush(wxColour(200, 200, 100)));
     dc.DrawRectangle(220, legendY, 15, 15);
     dc.DrawText("WAITING", 240, legendY);
 }
 
+
 void TimelineChart::OnTimer(wxTimerEvent& event) {
     if (m_isRunning) {
         m_currentCycle++;
-        
-        // Actualizar scroll automaticamente
+
+        // 🔁 Liberar recursos agendados para este ciclo
+        for (auto& [recurso, ciclos] : m_pendingReleases) {
+            while (!ciclos.empty() && ciclos.front() == m_currentCycle) {
+                m_resourceStates[recurso]++;
+                ciclos.pop();
+            }
+        }
+
+        // Scroll automático si se pasa del ancho visible
         int x, y;
         GetViewStart(&x, &y);
         if (m_currentCycle * 30 > GetSize().GetWidth() + x * 20) {
             Scroll(x + 5, y);
         }
-        
+
         Refresh();
-        
+
         // Detener cuando se hayan procesado todas las acciones
         int maxCycle = 0;
         for (const Action& action : m_actions) {
             maxCycle = std::max(maxCycle, action.cycle);
         }
-        
+
         if (m_currentCycle > maxCycle + 5) {
             StopSimulation();
         }
     }
 }
+
 
 void TimelineChart::StartSimulation() {
     m_isRunning = true;
