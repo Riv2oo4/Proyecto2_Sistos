@@ -1818,7 +1818,6 @@ void TimelineChart::OnTimer(wxTimerEvent &event)
     {
         m_currentCycle++;
 
-        // 🔁 Liberar recursos agendados para este ciclo
         for (auto &[recurso, ciclos] : m_pendingReleases)
         {
             while (!ciclos.empty() && ciclos.front() == m_currentCycle)
