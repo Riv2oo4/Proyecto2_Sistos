@@ -1305,17 +1305,25 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString &filename)
     }
 
     std::string line;
-    // Paleta de colores para cada proceso
-    std::vector<wxColour> colors = {
-        wxColour(255, 0, 0),   // Rojo
-        wxColour(0, 0, 255),   // Azul
-        wxColour(0, 255, 0),   // Verde
-        wxColour(0, 255, 255), // Cian
-        wxColour(255, 255, 0), // Amarillo
-        wxColour(255, 0, 255)  // Magenta
+    // Paleta de colores pastel para filas alternadas y texto
+    std::vector<wxColour> pastelBackgrounds = {
+        wxColour(255, 230, 230), // rosa suave
+        wxColour(230, 230, 255), // azul suave
+        wxColour(230, 255, 230), // verde suave
+        wxColour(230, 255, 255), // cian suave
+        wxColour(255, 255, 230), // amarillo suave
+        wxColour(255, 230, 255)  // magenta suave
     };
-    int colorIndex = 0;
+    std::vector<wxColour> textColours = {
+        wxColour(150, 0, 0),   // rojo oscuro
+        wxColour(0, 0, 150),   // azul oscuro
+        wxColour(0, 150, 0),   // verde oscuro
+        wxColour(0, 150, 150), // cian oscuro
+        wxColour(150, 150, 0), // amarillo oscuro
+        wxColour(150, 0, 150)  // magenta oscuro
+    };
 
+    int colorIndex = 0;
     while (std::getline(file, line))
     {
         if (line.empty())
@@ -1324,7 +1332,7 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString &filename)
         std::stringstream ss(line);
         std::string pid_str, bt_str, at_str, prio_str;
 
-        // Leemos cada campo hasta la coma
+        // Leer cada campo hasta la coma
         std::getline(ss, pid_str, ',');
         std::getline(ss, bt_str, ',');
         std::getline(ss, at_str, ',');
@@ -1341,32 +1349,59 @@ void SynchronizationPanel::LoadProcessesFromFile(const wxString &filename)
         trim(at_str);
         trim(prio_str);
 
-        int bt = std::stoi(bt_str);
-        int at = std::stoi(at_str);
-        int prio = std::stoi(prio_str);
+        int bt = 0, at = 0, prio = 0;
+        try
+        {
+            bt = std::stoi(bt_str);
+            at = std::stoi(at_str);
+            prio = std::stoi(prio_str);
+        }
+        catch (...)
+        {
+            continue;
+        }
 
-        wxColour color = colors[colorIndex++ % colors.size()];
+        // Asignar colores según índice (ciclo)
+        wxColour bg = pastelBackgrounds[colorIndex % pastelBackgrounds.size()];
+        wxColour fg = textColours[colorIndex % textColours.size()];
+        colorIndex++;
+
         Process p;
         p.pid = wxString(pid_str);
         p.burstTime = bt;
         p.arrivalTime = at;
         p.priority = prio;
-        p.color = color;
+        p.color = fg; // color de texto en la vista
         p.startTime = 0;
         p.finishTime = 0;
         p.waitingTime = 0;
         m_processes.push_back(p);
+
+        // Insertar fila en el ListCtrl
+        long idx = m_processListCtrl->InsertItem(
+            m_processListCtrl->GetItemCount(),
+            p.pid);
+        m_processListCtrl->SetItem(idx, 1, wxString::Format("%d", p.burstTime));
+        m_processListCtrl->SetItem(idx, 2, wxString::Format("%d", p.arrivalTime));
+        m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", p.priority));
+
+        // Aplicar estilos: fondo pastel y texto oscuro
+        m_processListCtrl->SetItemBackgroundColour(idx, bg);
+        m_processListCtrl->SetItemTextColour(idx, fg);
+
+        // Fuente en negrita para PID
+        wxFont boldFont = m_processListCtrl->GetFont();
+        boldFont.SetWeight(wxFONTWEIGHT_BOLD);
+        m_processListCtrl->SetItemFont(idx, boldFont);
     }
 
-    // Ahora actualizamos el ListCtrl en el panel de sincronización
-    for (size_t i = 0; i < m_processes.size(); ++i)
+    // Ajustar automáticamente ancho de columnas
+    for (int col = 0; col < 4; ++col)
     {
-        long idx = m_processListCtrl->InsertItem(i, m_processes[i].pid);
-        m_processListCtrl->SetItem(idx, 1, wxString::Format("%d", m_processes[i].burstTime));
-        m_processListCtrl->SetItem(idx, 2, wxString::Format("%d", m_processes[i].arrivalTime));
-        m_processListCtrl->SetItem(idx, 3, wxString::Format("%d", m_processes[i].priority));
+        m_processListCtrl->SetColumnWidth(col, wxLIST_AUTOSIZE);
     }
 
+    // Comprueba si ya se pueden habilitar los botones de “Iniciar Simulación”
     CheckEnableStart();
 }
 
@@ -1748,6 +1783,7 @@ void TimelineChart::OnTimer(wxTimerEvent &event)
     {
         m_currentCycle++;
 
+        // 🔁 Liberar recursos agendados para este ciclo
         for (auto &[recurso, ciclos] : m_pendingReleases)
         {
             while (!ciclos.empty() && ciclos.front() == m_currentCycle)
