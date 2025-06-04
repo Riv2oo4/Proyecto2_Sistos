@@ -285,6 +285,7 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "Simulador de Sistemas Opera
     CreateStatusBar(2);
     SetStatusText("Listo para simular", 0);
 
+    // CORRECCION: Crear notebook principal con estilo explicito
     m_notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                 wxNB_TOP | wxNB_FIXEDWIDTH);
 
@@ -332,6 +333,7 @@ void MainFrame::OnNotebookPageChanged(wxBookCtrlEvent &event)
     SetStatusText("Pestana activa: " + tabName, 0);
 }
 
+// Para SchedulingPanel - agregar titulo distintivo
 SchedulingPanel::SchedulingPanel(wxWindow *parent) : wxPanel(parent)
 {
     // TITULO DEL PANEL
@@ -613,14 +615,18 @@ void SchedulingPanel::OnResetSimulation(wxCommandEvent &event)
 
 void SchedulingPanel::OnAlgorithmCheck(wxCommandEvent &event)
 {
+    // 1) Si selecciona FIFO, deseleccionar los demás (opcional)
     if (event.GetId() == 1010 && m_fifoCheck->GetValue())
     {
+        // Desmarcar SJF, SRT, RR, Priority (si no quieres que se mezclen)
         m_sjfCheck->SetValue(false);
         m_srtCheck->SetValue(false);
         m_rrCheck->SetValue(false);
         m_priorityCheck->SetValue(false);
     }
+    // … Similar para los demás checkboxes, si solo permites uno a la vez …
 
+    // 2) Habilitar o deshabilitar el botón “Iniciar Simulación”
     bool anySelected = m_fifoCheck->GetValue() || m_sjfCheck->GetValue() || m_srtCheck->GetValue() || m_rrCheck->GetValue() || m_priorityCheck->GetValue();
     m_startBtn->Enable(anySelected && !m_processes.empty());
 }
@@ -643,6 +649,7 @@ void SchedulingPanel::LoadProcessesFromFile(const wxString &filename)
     }
 
     std::string line;
+    // Paleta de colores para cada proceso
     std::vector<wxColour> colors = {
         wxColour(255, 0, 0),   // Rojo
         wxColour(0, 0, 255),   // Azul
@@ -881,7 +888,10 @@ void SchedulingPanel::ScheduleSJF()
 void SchedulingPanel::ScheduleSRT()
 {
     if (m_processes.empty())
+    {
+        wxMessageBox("No hay procesos cargados.", "Atención", wxICON_INFORMATION);
         return;
+    }
 
     struct ExecState
     {
@@ -889,9 +899,8 @@ void SchedulingPanel::ScheduleSRT()
         int remainingTime;
     };
 
-    std::vector<ExecState> readyQueue;
-    std::vector<Process> procesos = m_processes;
-    for (auto &p : procesos)
+    // 1) Inicializar: restablecer campos y segmentos en m_processes
+    for (auto &p : m_processes)
     {
         p.startTime = -1;
         p.finishTime = -1;
@@ -899,14 +908,17 @@ void SchedulingPanel::ScheduleSRT()
         p.segments.clear();
     }
 
-    int currentCycle = 0;
+    // 2) Preparar vector de ExecState sobre punteros a m_processes
+    std::vector<ExecState> readyQueue;
+    int n = m_processes.size();
     int completed = 0;
-    int n = procesos.size();
+    int currentCycle = 0;
 
+    // 3) Bucle hasta completar todos
     while (completed < n)
     {
-        // Insertar procesos que llegan este ciclo
-        for (auto &p : procesos)
+        // 3a) Insertar en readyQueue todos los procesos que llegan en este ciclo
+        for (auto &p : m_processes)
         {
             if (p.arrivalTime == currentCycle)
             {
@@ -914,7 +926,7 @@ void SchedulingPanel::ScheduleSRT()
             }
         }
 
-        // Seleccionar el de menor tiempo restante
+        // 3b) Seleccionar el proceso con menor remainingTime
         auto it = std::min_element(readyQueue.begin(), readyQueue.end(),
                                    [](const ExecState &a, const ExecState &b)
                                    {
@@ -926,7 +938,7 @@ void SchedulingPanel::ScheduleSRT()
             ExecState &exec = *it;
             Process *p = exec.proc;
 
-            // Crear o extender segmento actual
+            // 3c) Registrar segmento en p->segments
             if (p->segments.empty() || p->segments.back().first + p->segments.back().second != currentCycle)
             {
                 p->segments.push_back({currentCycle, 1});
@@ -936,6 +948,7 @@ void SchedulingPanel::ScheduleSRT()
                 p->segments.back().second += 1;
             }
 
+            // 3d) Reducir tiempo restante
             exec.remainingTime--;
             if (exec.remainingTime == 0)
             {
@@ -948,47 +961,38 @@ void SchedulingPanel::ScheduleSRT()
         currentCycle++;
     }
 
-    // Calcular startTime y waitingTime
-    for (auto &p : procesos)
+    // 4) Calcular startTime y waitingTime directamente sobre m_processes
+    for (auto &p : m_processes)
     {
-        p.startTime = p.segments.front().first;
-        p.waitingTime = p.finishTime - p.arrivalTime - p.burstTime;
-    }
-
-    // Copiar a m_processes
-    for (auto &p_new : procesos)
-    {
-        for (auto &p_old : m_processes)
+        if (!p.segments.empty())
         {
-            if (p_new.pid == p_old.pid)
-            {
-                p_old.startTime = p_new.startTime;
-                p_old.finishTime = p_new.finishTime;
-                p_old.waitingTime = p_new.waitingTime;
-                p_old.segments = p_new.segments;
-            }
+            p.startTime = p.segments.front().first;
+            p.waitingTime = p.finishTime - p.arrivalTime - p.burstTime;
         }
     }
 
-    // Calcular métricas
-    double totalWT = 0, totalTAT = 0;
+    // 5) Calcular métricas de eficiencia
+    double totalWT = 0.0, totalTAT = 0.0;
     int ultimoFin = 0;
     for (const auto &p : m_processes)
     {
         totalWT += p.waitingTime;
         totalTAT += (p.finishTime - p.arrivalTime);
-        if (p.finishTime > ultimoFin)
-            ultimoFin = p.finishTime;
+        ultimoFin = std::max(ultimoFin, p.finishTime);
     }
+    double avgWT = totalWT / n;
+    double avgTAT = totalTAT / n;
+    double throughput = double(n) / double(ultimoFin);
 
-    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", totalWT / n));
-    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", totalTAT / n));
-    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", double(n) / ultimoFin));
+    m_metricsGrid->SetCellValue(0, 1, wxString::Format("%.2f", avgWT));
+    m_metricsGrid->SetCellValue(1, 1, wxString::Format("%.2f", avgTAT));
+    m_metricsGrid->SetCellValue(2, 1, wxString::Format("%.2f", throughput));
 
-    // Pasar al Gantt
+    // 6) Pasar datos al Gantt y reiniciar gráfico
     m_ganttChart->SetProcesses(m_processes);
     m_ganttChart->ResetChart();
 }
+
 void SchedulingPanel::ScheduleRR()
 {
     if (m_processes.empty())
