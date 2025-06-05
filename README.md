@@ -66,8 +66,8 @@ Este proyecto implementa un simulador gráfico de algoritmos de planificación (
 
 2. **Ejecutar el comando Make en la temrinal**  
    ```bash
-
+   Make
 
 3. **Correr archivo**  
    ```bash
-./nombre_ejecutable
+   ./nombre_ejecutable
