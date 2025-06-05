@@ -1577,9 +1577,9 @@ void GanttChart::DrawTimeAxis(wxPaintDC &dc)
 {
     dc.SetPen(*wxBLACK_PEN);
     int baseY = 60;
-    dc.DrawLine(50, baseY, 800, baseY);
+    dc.DrawLine(50, baseY, 960, baseY);
 
-    for (int i = 0; i <= 20; ++i)
+    for (int i = 0; i <= 30; ++i)
     {
         int x = 50 + i * 30; // 30px por ciclo
         dc.DrawLine(x, baseY - 5, x, baseY + 5);
